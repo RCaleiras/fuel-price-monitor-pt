@@ -45,6 +45,11 @@ The collector must check this every run and fail loudly if it does not match.
 ## Known data issues (to handle in staging)
 - `Localidade` null in 103 rows, `CodPostal` null in 10.
 - Brand "Generico" is 8% of rows: limits brand comparisons.
+- `raw_weekly_national` is loaded as-is from the pivot cache and contains 132 duplicate (week, fuel, component) keys:
+  the weeks 2019-12-02 and 2020-07-27 appear twice in the source. 126 pairs are identical; the 6 that differ are all
+  fuel "Fuel" (2020-07-27 has a 0.0 PVP in the second copy). Deduplicate in staging; the loader does not.
+- `raw_history_2004_2009` drops the "Media Anual" rows; the row "2009-06-08 (*)" has a footnote mark and is kept.
+- Both tables are rebuilt (WRITE_TRUNCATE) on each `python -m src.load_history` run; `--dry-run` parses only.
 - Station attributes (name, brand, address) can change: decide whether `dim_stations` is overwritten or versioned. Default: overwrite, note the limit in the README.
 
 ## Reconciliation with DGEG official data
