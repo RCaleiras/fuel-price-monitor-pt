@@ -1,18 +1,18 @@
 name: collect-fuel-prices
 
-# Manual only for now. Enable the schedule once src/collect.py works and the
-# GCP_SA_KEY secret is set (Settings > Secrets and variables > Actions).
+# Daily snapshot at 06:30 UTC. Needs the GCP_SA_KEY secret and the GCP_PROJECT / BQ_DATASET
+# variables (Settings > Secrets and variables > Actions). Can also be run by hand.
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "30 6 * * *"   # daily, 06:30 UTC
+  schedule:
+    - cron: "30 6 * * *"
 
 permissions:
   contents: read
 
 jobs:
   collect:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
