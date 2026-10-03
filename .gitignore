@@ -12,3 +12,4 @@ htmlcov/
 !docs/*.json
 .DS_Store
 CLAUDE.md
+graphify-out/
