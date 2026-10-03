@@ -61,14 +61,16 @@ daily AS (
 with_previous AS (
   SELECT
     *,
-    LAG(price_eur) OVER (PARTITION BY station_id, fuel_id ORDER BY price_date) AS previous_price_eur
+    LAG(price_eur) OVER (PARTITION BY station_id, fuel_id ORDER BY price_date) AS previous_price_eur,
+    LAG(price_date) OVER (PARTITION BY station_id, fuel_id ORDER BY price_date) AS previous_price_date
   FROM daily
 )
 
 SELECT
-  p.* EXCEPT (previous_price_eur),
+  p.* EXCEPT (previous_price_eur, previous_price_date),
   p.previous_price_eur,
-  IF(p.previous_price_eur IS NULL, NULL, p.price_eur != p.previous_price_eur) AS is_price_change,
+  -- NULL only on a pair's first day; an unparseable price on either side counts as a change
+  IF(p.previous_price_date IS NULL, NULL, p.price_eur IS DISTINCT FROM p.previous_price_eur) AS is_price_change,
   f.fuel_name,
   f.unit,
   COALESCE(f.is_fleet_fuel, FALSE) AS is_fleet_fuel,
