@@ -11,7 +11,7 @@ Based on one full-day sample (14,018 rows, 3,175 stations, 12 road fuels). Numbe
 | raw | `raw_history_2004_2009` | week x fuel (retail price only) | DGEG Excel, sheet "Precos (2004 a 2009)" |
 | raw | `raw_tax_events` | legislative change | DGEG Excel, sheet "Legislacao" |
 | model | `dim_stations` | station | built from raw_station_prices |
-| model | `fact_price_station` | station x fuel x price change | deduplicated from raw (see below) |
+| staging | `stg_station_prices` (view) | station x fuel x day | daily series built from raw, see "Daily grain" below |
 | model | `fact_price_weekly_national` | week x fuel x component | cleaned raw_weekly_national |
 
 ## raw_station_prices (store the API fields as they come)
@@ -28,7 +28,20 @@ Only 21% of prices changed in the last 24h (97% in 7 days, 99.9% in 30 days).
 So 79% of a daily snapshot repeats yesterday.
 - Raw keeps the full daily snapshot: simple, resilient, and it lets us study when stations change price.
 - Volume is small: ~14k rows/day, ~5M rows/year, a few hundred MB/year with a compact raw table.
-- `fact_price_station` keeps one row per station x fuel x `price_updated_at` (a price change), deduplicated with SQL.
+- `stg_station_prices` keeps one row per station x fuel x day (see below).
+
+## Daily grain (stg_station_prices)
+One row per station x fuel x day, from the first to the last day we collected that pair, so any time analysis can
+read the price of any day directly.
+- Days are UTC collection days (`DATE(collected_at)`). A day with several runs keeps the latest run.
+- A day with no run for a pair keeps the previous price and has `observed_that_day = FALSE`. This covers a missed
+  collection and a station that is missing from one run and comes back.
+- A station that stops appearing in the API ends its series on the last day we saw it.
+- `previous_price_eur` is the price of the day before. `is_price_change` is TRUE only when the price differs from it,
+  and NULL on a pair's first day. In the first 3 days, about 75% of the `DataAtualizacao` changes kept the same price
+  (stations re-submit it with a new timestamp), so `price_updated_at` is not a reliable "price changed" signal.
+- `price_updated_at` stays as information only (DGEG local time, no zone, read as Europe/Lisbon).
+- History starts when collection started: before that, only `raw_weekly_national` exists (national weekly averages).
 
 ## Collector completeness check
 For each fuel, the API field `Quantidade` is the total station count.
