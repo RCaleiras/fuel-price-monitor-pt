@@ -31,12 +31,19 @@ So 79% of a daily snapshot repeats yesterday.
 - `stg_station_prices` keeps one row per station x fuel x day (see below).
 
 ## Daily grain (stg_station_prices)
-One row per station x fuel x day, from the first to the last day we collected that pair, so any time analysis can
-read the price of any day directly.
+One row per station x fuel x day, from the first day we collected that pair to the latest collection day, so any
+time analysis can read the price of any day directly.
 - Days are UTC collection days (`DATE(collected_at)`). A day with several runs keeps the latest run.
 - A day with no run for a pair keeps the previous price and has `observed_that_day = FALSE`. This covers a missed
   collection and a station that is missing from one run and comes back.
-- A station that stops appearing in the API ends its series on the last day we saw it.
+- A station that stops appearing in the API is kept with its last known price, flagged `observed_that_day = FALSE`.
+  We cannot tell whether it closed: in the first 3 days, every disappearance was a whole station whose price had
+  not been updated for about 9 days (see `sources.md`), which looks like DGEG hiding stale prices rather than a closure.
+  `days_since_last_observed` says how long ago we last saw it (0 on observed days). There is no cut-off in the view:
+  closed stations stay forever, so filter on this column in analyses.
+- `days_since_price_update` is the age of the price (day minus the UTC date of `price_updated_at`), NULL if that
+  timestamp could not be parsed.
+- For "published prices only" use `observed_that_day`; for the full market including carried prices, use all rows.
 - `previous_price_eur` is the price of the day before. `is_price_change` is TRUE only when the price differs from it,
   and NULL on a pair's first day. In the first 3 days, about 75% of the `DataAtualizacao` changes kept the same price
   (stations re-submit it with a new timestamp), so `price_updated_at` is not a reliable "price changed" signal.

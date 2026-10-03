@@ -36,6 +36,14 @@
 | Fuel names differ | Excel has 21 names; the API and the 2004-2009 sheet use others (e.g. "Gasoleo" vs "Gasoleo simples") | Mapping table `dim_fuel` |
 | Component check | PST + ISP + IVA vs PVP fails only on the duplicated rows | Re-run the check after deduplication |
 
+### Station API findings (checked 2026-10-03, 3 days of snapshots)
+| Finding | Detail | Handling |
+|---|---|---|
+| Stations disappear | 21 stations after day 1, 48 after day 2, always whole stations (never a single fuel). None came back. 7 new stations per day | Keep the last known price, flagged (`observed_that_day`, `days_since_last_observed`) |
+| Likely cause: stale prices | All 95 pairs lost after day 1 had a price updated exactly 9 days earlier; 214 of the 227 pairs at that age on day 2 vanished the next day. Each day only 24 to 32 pairs older than 10 days remain (19 of them older than 30 days) | Hypothesis, not confirmed: DGEG seems to hide stations without a price update for ~10 days. Re-check with more days |
+| Timestamp updates are not price changes | About 75% of `DataAtualizacao` changes kept the same price | Use `is_price_change` (compares prices), not `price_updated_at` |
+| Two runs on one day | 2026-10-01 has two runs (a manual one and the scheduled one) | Staging keeps the latest run of each day |
+
 ## Rules for the collector
 1. One request per fuel type per day. Identify the project in the User-Agent (`fuel-monitor-portfolio`). No personal data in it.
 2. Credit DGEG in the README and the dashboard.
