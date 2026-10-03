@@ -11,3 +11,4 @@ htmlcov/
 *.json
 !docs/*.json
 .DS_Store
+CLAUDE.md
