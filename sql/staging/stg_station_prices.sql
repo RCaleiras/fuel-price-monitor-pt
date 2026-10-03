@@ -46,7 +46,7 @@ validity AS (
     *,
     COALESCE(
       DATE_SUB(LEAD(collected_date) OVER (PARTITION BY station_id, fuel_id ORDER BY collected_date), INTERVAL 1 DAY),
-      MAX(collected_date) OVER ()
+      (SELECT MAX(collected_date) FROM daily_snapshots)
     ) AS valid_to
   FROM daily_snapshots
 ),
