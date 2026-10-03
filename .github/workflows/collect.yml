@@ -1,11 +1,11 @@
 name: collect-fuel-prices
 
-# Daily snapshot at 06:30 UTC. Needs the GCP_SA_KEY secret and the GCP_PROJECT / BQ_DATASET
+# Daily snapshot at 06:01 UTC. Needs the GCP_SA_KEY secret and the GCP_PROJECT / BQ_DATASET
 # variables (Settings > Secrets and variables > Actions). Can also be run by hand.
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 6 * * *"
+    - cron: "1 6 * * *"
 
 permissions:
   contents: read
