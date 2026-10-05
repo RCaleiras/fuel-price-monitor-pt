@@ -5,7 +5,20 @@
 -- whether they closed, so they are kept and flagged, never dropped. days_since_last_observed tells how stale.
 -- Parsing happens here (raw keeps the text as the API sends it); bad values are flagged, not deleted.
 -- Days are UTC collection days; price_updated_at is only informative (DGEG local time, no zone).
-CREATE OR REPLACE VIEW `fuel-monitor-pt.fuel_monitor.stg_station_prices` AS
+-- A table rebuilt in full by src/build_models.py before the models, so the dimensions and the fact all read the same
+-- snapshot of the data. CREATE OR REPLACE is atomic: if a rebuild fails, readers keep yesterday's table, and the test
+-- stg_station_prices_fresh catches it.
+-- One-time migration: it used to be a view, and a table cannot replace a view, so the view is dropped first.
+-- The block does nothing once the table exists.
+IF EXISTS (
+  SELECT 1
+  FROM `fuel-monitor-pt.fuel_monitor.INFORMATION_SCHEMA.TABLES`
+  WHERE table_name = 'stg_station_prices' AND table_type = 'VIEW'
+) THEN
+  DROP VIEW `fuel-monitor-pt.fuel_monitor.stg_station_prices`;
+END IF;
+
+CREATE OR REPLACE TABLE `fuel-monitor-pt.fuel_monitor.stg_station_prices` AS
 WITH parsed AS (
   SELECT
     Id AS station_id,

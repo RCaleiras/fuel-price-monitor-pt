@@ -44,11 +44,32 @@ def test_main_runs_every_model_in_order(monkeypatch, tmp_path):
     (tmp_path / "a.sql").write_text("SELECT 1")
     client = MagicMock()
     monkeypatch.setattr(build_models, "build_client", lambda: client)
-    monkeypatch.setattr(build_models, "model_files", lambda: sorted(tmp_path.glob("*.sql")))
+    monkeypatch.setattr(build_models, "sql_files", lambda: sorted(tmp_path.glob("*.sql")))
 
     build_models.main()
 
     assert [c.args[0] for c in client.query.call_args_list] == ["SELECT 1", "SELECT 2"]
+
+
+def test_sql_files_run_staging_before_models(monkeypatch, tmp_path):
+    staging = tmp_path / "staging"
+    models = tmp_path / "models"
+    staging.mkdir()
+    models.mkdir()
+    (staging / "stg_x.sql").write_text("SELECT 'staging'")
+    (models / "dim_x.sql").write_text("SELECT 'model'")
+    monkeypatch.setattr(build_models, "STAGING_DIR", staging)
+    monkeypatch.setattr(build_models, "MODELS_DIR", models)
+
+    assert [p.name for p in build_models.sql_files()] == ["stg_x.sql", "dim_x.sql"]
+
+
+def test_real_staging_runs_before_every_model():
+    names = [p.name for p in build_models.sql_files()]
+
+    assert max(i for i, n in enumerate(names) if n.startswith("stg_")) < min(
+        i for i, n in enumerate(names) if not n.startswith("stg_")
+    )
 
 
 def test_real_models_run_dimensions_before_facts_and_reports():
