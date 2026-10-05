@@ -2,6 +2,7 @@
 -- No stale-price cutoff here on purpose: filter on observed_that_day or days_since_last_observed in the dashboard
 -- (the cutoff is decided after the 2026-10-17 re-check of the "DGEG hides stale prices" hypothesis).
 -- Station attributes are the current ones (dim_stations overwrites them, no history).
+-- district, municipality and locality come from dim_location (through the station); the address stays on the station.
 -- Every join is on a key that always exists (the dimensions hold the -1 Unknown row), so no row is lost.
 CREATE OR REPLACE VIEW `fuel-monitor-pt.fuel_monitor.rpt_station_price_daily` AS
 SELECT
@@ -19,9 +20,10 @@ SELECT
   st.station_name,
   st.station_type,
   st.brand,
-  st.district,
-  st.municipality,
-  st.locality,
+  loc.district,
+  loc.municipality,
+  loc.locality,
+  st.address,
   st.latitude,
   st.longitude,
   fct.fuel_sk,
@@ -40,4 +42,5 @@ SELECT
 FROM `fuel-monitor-pt.fuel_monitor.fct_station_price_daily` AS fct
 LEFT JOIN `fuel-monitor-pt.fuel_monitor.dim_date` AS dt ON dt.date_key = fct.price_date
 LEFT JOIN `fuel-monitor-pt.fuel_monitor.dim_stations` AS st ON st.station_sk = fct.station_sk
+LEFT JOIN `fuel-monitor-pt.fuel_monitor.dim_location` AS loc ON loc.location_sk = st.location_sk
 LEFT JOIN `fuel-monitor-pt.fuel_monitor.dim_fuel_type` AS fu ON fu.fuel_sk = fct.fuel_sk;
