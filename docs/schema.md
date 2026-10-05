@@ -10,7 +10,7 @@ Based on one full-day sample (14,018 rows, 3,175 stations, 12 road fuels). Numbe
 | raw | `raw_history_2004_2009` | week x fuel (retail price only) | DGEG Excel, sheet "Precos (2004 a 2009)" |
 | raw | `raw_tax_events` | legislative change | DGEG Excel, sheet "Legislacao" |
 | model | `dim_stations` | station | built from raw_station_prices |
-| model | `dim_fuel_type` (view) | fuel type | latest day of `stg_station_prices` |
+| model | `dim_fuel_type` | fuel type | table fed from `stg_station_prices` by `src/build_models.py` |
 | staging | `stg_station_prices` (view) | station x fuel x day | daily series built from raw, see "Daily grain" below |
 | model | `fact_price_weekly_national` | week x fuel x component | cleaned raw_weekly_national |
 
@@ -25,6 +25,14 @@ Keep `Preco` and `DataAtualizacao` as text here. Parse in SQL, not in Python.
   `/kg` or `/m3`, otherwise litres); never average across units.
 - Fuel name, unit and `is_fleet_fuel` are decided once, in `stg_station_prices`. There is no raw fuel type table: the
   API fuel list is only used by the collector to choose which fuels to collect, and `dim_fuel_type` lists them.
+
+## Dimension keys (dim_fuel_type)
+- `fuel_sk` is a surrogate key: a plain counter (1, 2, 3...). `fuel_code` is the DGEG id, kept for lookups only.
+- The dimension is a table that only grows. A fuel that already has a row keeps its `fuel_sk` forever; a new fuel gets
+  the next number (MAX + 1). Nothing is rebuilt. Name, unit and fleet flag are overwritten if they change (no history).
+- `fuel_sk = -1` is the "Unknown" row. Facts join on `fuel_code` and use `COALESCE(d.fuel_sk, -1)`, so a missing fuel
+  becomes -1 and facts never hold NULL.
+- `src/build_models.py` runs `sql/models/*.sql` after each collection (workflow step "Build models").
 
 ## Why snapshot + deduplicate
 Only 21% of prices changed in the last 24h (97% in 7 days, 99.9% in 30 days).

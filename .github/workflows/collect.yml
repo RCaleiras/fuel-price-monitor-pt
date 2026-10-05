@@ -27,3 +27,10 @@ jobs:
           GCP_PROJECT: ${{ vars.GCP_PROJECT }}
           BQ_DATASET: ${{ vars.BQ_DATASET }}
         run: python -m src.collect
+      # Separate step: if it fails the day's prices are already safe in raw, and the job still turns red.
+      - name: Build models
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          BQ_DATASET: ${{ vars.BQ_DATASET }}
+        run: python -m src.build_models
