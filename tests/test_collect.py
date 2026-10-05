@@ -196,7 +196,7 @@ def test_append_rows_runs_an_append_only_load_job(monkeypatch):
     client.project = "proj"
     rows = [{"Id": 1}]
 
-    collect.append_rows(client, "tbl", collect.FUEL_TYPE_SCHEMA, rows)
+    collect.append_rows(client, "tbl", collect.STATION_SCHEMA, rows)
 
     args, kwargs = client.load_table_from_json.call_args
     assert args == (rows, "proj.ds.tbl")
@@ -214,7 +214,7 @@ def test_append_rows_propagates_load_job_failures(monkeypatch):
     client.load_table_from_json.return_value.result.side_effect = RuntimeError("load failed")
 
     with pytest.raises(RuntimeError, match="load failed"):
-        collect.append_rows(client, "tbl", collect.FUEL_TYPE_SCHEMA, [])
+        collect.append_rows(client, "tbl", collect.STATION_SCHEMA, [])
 
 
 # --- main ---------------------------------------------------------------------------------
@@ -233,7 +233,7 @@ def pipeline(monkeypatch):
     return session, client
 
 
-def test_main_loads_only_active_road_fuels_and_all_fuel_types(pipeline, monkeypatch):
+def test_main_loads_only_active_road_fuels(pipeline, monkeypatch):
     session, client = pipeline
     fuels = [fuel(1, "Gasóleo simples"), fuel(2, "Inativo", active=False), fuel(3, "Naval", road=False)]
     monkeypatch.setattr(collect, "fetch_fuel_types", lambda s: fuels)
@@ -249,16 +249,12 @@ def test_main_loads_only_active_road_fuels_and_all_fuel_types(pipeline, monkeypa
 
     assert fetched == [1]
     assert session.headers["User-Agent"] == collect.USER_AGENT
-    (stations_call, fuel_types_call) = collect.append_rows.call_args_list
+    (stations_call,) = collect.append_rows.call_args_list
     assert stations_call.args[:3] == (client, collect.STATIONS_TABLE, collect.STATION_SCHEMA)
     station_rows = stations_call.args[3]
     assert len(station_rows) == 1
     assert station_rows[0]["fuel_id"] == 1
     assert station_rows[0]["Id"] == 10
-    assert fuel_types_call.args[:3] == (client, collect.FUEL_TYPES_TABLE, collect.FUEL_TYPE_SCHEMA)
-    fuel_type_rows = fuel_types_call.args[3]
-    assert [r["Id"] for r in fuel_type_rows] == [1, 2, 3]
-    assert all(set(r) == {f.name for f in collect.FUEL_TYPE_SCHEMA} for r in fuel_type_rows)
 
 
 def test_main_uses_one_collected_at_for_every_row(pipeline, monkeypatch):
@@ -267,8 +263,8 @@ def test_main_uses_one_collected_at_for_every_row(pipeline, monkeypatch):
 
     collect.main()
 
-    (stations_call, fuel_types_call) = collect.append_rows.call_args_list
-    stamps = {r["collected_at"] for r in stations_call.args[3] + fuel_types_call.args[3]}
+    (stations_call,) = collect.append_rows.call_args_list
+    stamps = {r["collected_at"] for r in stations_call.args[3]}
     assert len(stamps) == 1
 
 

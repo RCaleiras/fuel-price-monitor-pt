@@ -13,6 +13,23 @@ WITH parsed AS (
     TipoPosto AS station_type,
     Marca AS brand,
     fuel_id,
+    Combustivel AS fuel_name,
+    -- DGEG only says the unit inside the name of the gas fuels ("... - €/kg", "... - €/m3"); the rest is litres
+    CASE
+      WHEN ENDS_WITH(Combustivel, '/kg') THEN 'kg'
+      WHEN ENDS_WITH(Combustivel, '/m3') THEN 'm3'
+      ELSE 'litro'
+    END AS unit,
+    -- Fleet scope by name because the names are what the business uses; ids only join the tables.
+    Combustivel IN (
+      'Gasóleo simples',
+      'Gasóleo especial',
+      'Gasolina simples 95',
+      'Gasolina especial 95',
+      'Gasolina 98',
+      'Gasolina especial 98',
+      'GPL Auto'
+    ) AS is_fleet_fuel,
     -- "2,207 €" -> 2.207
     SAFE_CAST(REPLACE(REGEXP_REPLACE(Preco, r'[^0-9,]', ''), ',', '.') AS NUMERIC) AS price_eur,
     -- DGEG publishes Portuguese local time without a zone, so say so explicitly
@@ -76,9 +93,5 @@ SELECT
   p.previous_price_eur,
   -- NULL only on a pair's first day; an unparseable price on either side counts as a change
   IF(p.previous_price_date IS NULL, NULL, p.price_eur IS DISTINCT FROM p.previous_price_eur) AS is_price_change,
-  f.fuel_name,
-  f.unit,
-  COALESCE(f.is_fleet_fuel, FALSE) AS is_fleet_fuel,
   p.price_eur IS NULL OR p.price_eur <= 0 OR p.price_updated_at IS NULL AS is_suspect_price
-FROM with_previous AS p
-LEFT JOIN `fuel-monitor-pt.fuel_monitor.stg_fuel_types` AS f USING (fuel_id);
+FROM with_previous AS p;

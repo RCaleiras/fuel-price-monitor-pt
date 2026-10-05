@@ -24,7 +24,6 @@ PAGE_SIZE = 5000  # larger than any fuel's station count: one request per fuel
 MAX_PAGES = 10  # safety net against a paging loop if the API ignores `pagina`
 
 STATIONS_TABLE = "raw_station_prices"
-FUEL_TYPES_TABLE = "raw_fuel_types"
 
 STATION_SCHEMA = [
     bigquery.SchemaField("Id", "INTEGER"),
@@ -43,15 +42,6 @@ STATION_SCHEMA = [
     bigquery.SchemaField("Longitude", "FLOAT"),
     bigquery.SchemaField("Quantidade", "INTEGER"),
     bigquery.SchemaField("fuel_id", "INTEGER"),
-    bigquery.SchemaField("collected_at", "TIMESTAMP"),
-]
-FUEL_TYPE_SCHEMA = [
-    bigquery.SchemaField("Id", "INTEGER"),
-    bigquery.SchemaField("Descritivo", "STRING"),
-    bigquery.SchemaField("UnidadeMedida", "STRING"),
-    bigquery.SchemaField("fl_ativo", "BOOLEAN"),
-    bigquery.SchemaField("fl_rodoviario", "BOOLEAN"),
-    bigquery.SchemaField("fl_ViewWebSite", "BOOLEAN"),
     bigquery.SchemaField("collected_at", "TIMESTAMP"),
 ]
 
@@ -157,14 +147,8 @@ def main() -> None:
         log.info("fuel %s (%s): %d rows", fuel["Id"], fuel["Descritivo"], len(rows))
         station_rows.extend(with_metadata(r, collected_at, fuel_id=fuel["Id"]) for r in rows)
 
-    fuel_type_rows = [
-        with_metadata({field.name: f.get(field.name) for field in FUEL_TYPE_SCHEMA[:-1]}, collected_at)
-        for f in fuel_types
-    ]
-
     client = build_client()
     append_rows(client, STATIONS_TABLE, STATION_SCHEMA, station_rows)
-    append_rows(client, FUEL_TYPES_TABLE, FUEL_TYPE_SCHEMA, fuel_type_rows)
 
 
 if __name__ == "__main__":

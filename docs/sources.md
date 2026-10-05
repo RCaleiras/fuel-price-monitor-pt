@@ -9,6 +9,7 @@
 - About 3,200 active stations in mainland Portugal (3,175 with a price in the 2026-10-01 snapshot).
 - Fuel types come from `GetTiposCombustiveis` (fields `Id`, `Descritivo`, `UnidadeMedida`, `fl_ativo`, `fl_rodoviario`, `fl_ViewWebSite`).
   Collect where `fl_ativo` and `fl_rodoviario` are true: 12 of 14 types, no hard-coded ids.
+  The list is only used to choose which fuels to collect; it is not stored (no `raw_fuel_types` table).
 - `qtdPorPagina=5000` returns each fuel in one page. `Quantidade` is the total for that fuel and matched the rows collected in every run so far.
 - A full snapshot is about 14,018 rows. In the first sample only 21% of prices had changed in the last 24h (97% in 7 days).
 - Licence: the station dataset on dados.gov.pt is CC BY 4.0 (DGEG). No written terms for the JSON endpoint itself.

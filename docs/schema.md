@@ -6,11 +6,11 @@ Based on one full-day sample (14,018 rows, 3,175 stations, 12 road fuels). Numbe
 | Layer | Table | Grain | Source |
 |---|---|---|---|
 | raw | `raw_station_prices` | collection run x station x fuel (append only) | DGEG portal API |
-| raw | `raw_fuel_types` | fuel type | API `GetTiposCombustiveis` |
 | raw | `raw_weekly_national` | week (Monday) x fuel x component | DGEG Excel, pivot cache (50,736 records) |
 | raw | `raw_history_2004_2009` | week x fuel (retail price only) | DGEG Excel, sheet "Precos (2004 a 2009)" |
 | raw | `raw_tax_events` | legislative change | DGEG Excel, sheet "Legislacao" |
 | model | `dim_stations` | station | built from raw_station_prices |
+| model | `dim_fuel_type` (view) | fuel type | latest day of `stg_station_prices` |
 | staging | `stg_station_prices` (view) | station x fuel x day | daily series built from raw, see "Daily grain" below |
 | model | `fact_price_weekly_national` | week x fuel x component | cleaned raw_weekly_national |
 
@@ -21,7 +21,10 @@ Keep `Preco` and `DataAtualizacao` as text here. Parse in SQL, not in Python.
 ## Parsing rules (done in SQL staging)
 - `Preco`: text like `"2,207 €"` -> `price_eur` NUMERIC (strip the euro sign, comma to dot).
 - `DataAtualizacao`: text `"2026-09-25 17:55"` -> TIMESTAMP (`price_updated_at`). Zero bad dates in the sample.
-- Fuel units differ: litres, kg and m3. Keep `unit` from `raw_fuel_types`; never average across units.
+- Fuel units differ: litres, kg and m3. `unit` is read from the fuel name in `stg_station_prices` (names ending in
+  `/kg` or `/m3`, otherwise litres); never average across units.
+- Fuel name, unit and `is_fleet_fuel` are decided once, in `stg_station_prices`. There is no raw fuel type table: the
+  API fuel list is only used by the collector to choose which fuels to collect, and `dim_fuel_type` lists them.
 
 ## Why snapshot + deduplicate
 Only 21% of prices changed in the last 24h (97% in 7 days, 99.9% in 30 days).
