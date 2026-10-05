@@ -7,7 +7,8 @@
 -- Display name of a place: the spelling that is not all capitals, then the most frequent one, then alphabetical.
 -- If DGEG only ever sends capitals for a place, it stays in capitals (known limit, noted in the README).
 -- A station with no locality gets the locality "Unknown" inside its municipality, so municipality analysis still works.
--- location_sk = -1 is the "Unknown" row for a station with no district or municipality at all.
+-- location_sk = -1 is the "Unknown" row for a station with no district or municipality at all. That is a data problem,
+-- so the test dim_location_matches_stations flags it on purpose.
 -- Places whose stations DGEG stopped publishing stay here.
 -- Must run before dim_stations (src/build_models.py runs files in name order). Safe to run again.
 CREATE TABLE IF NOT EXISTS `fuel-monitor-pt.fuel_monitor.dim_location` (
@@ -27,6 +28,7 @@ WHERE NOT EXISTS (SELECT 1 FROM `fuel-monitor-pt.fuel_monitor.dim_location` WHER
 CREATE TEMP TABLE latest_locations AS
 WITH cleaned AS (
   SELECT
+    station_id,
     NULLIF(TRIM(REGEXP_REPLACE(district, r'\s+', ' ')), '') AS district,
     NULLIF(TRIM(REGEXP_REPLACE(municipality, r'\s+', ' ')), '') AS municipality,
     COALESCE(NULLIF(TRIM(REGEXP_REPLACE(locality, r'\s+', ' ')), ''), 'Unknown') AS locality
@@ -35,7 +37,7 @@ WITH cleaned AS (
     AND station_id IS NOT NULL
 ),
 spellings AS (
-  SELECT district, municipality, locality, COUNT(*) AS n_rows
+  SELECT district, municipality, locality, COUNT(DISTINCT station_id) AS n_rows
   FROM cleaned
   WHERE district IS NOT NULL AND municipality IS NOT NULL
   GROUP BY district, municipality, locality
