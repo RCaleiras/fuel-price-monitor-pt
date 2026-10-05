@@ -19,7 +19,8 @@ Data source: Direcao-Geral de Energia e Geologia (DGEG).
 
 ## Architecture
 _Diagram to add._ Daily GitHub Action -> Python collector -> BigQuery `raw_station_prices` (append only) ->
-`stg_station_prices` (daily series view) -> dimensions `dim_fuel_type` and `dim_stations` -> fact table -> Looker Studio.
+`stg_station_prices` (daily series view) -> dimensions `dim_date`, `dim_fuel_type`, `dim_stations` ->
+fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> Looker Studio.
 
 - `collect-fuel-prices` (06:01 UTC): collects the day's snapshot, then updates the dimensions.
 - `check-freshness` (20:30 UTC): fails and sends an email if today's data is missing.
@@ -27,6 +28,8 @@ _Diagram to add._ Daily GitHub Action -> Python collector -> BigQuery `raw_stati
 ## Data model
 - Raw tables keep the source as it comes; cleaning happens in SQL views (`sql/staging/`).
 - Dimensions (`sql/models/`) use surrogate keys that never change, plus an "Unknown" row (key -1) so facts hold no NULL.
+- The daily fact keeps every price, including prices carried over for stations DGEG stopped publishing, flagged so the
+  dashboard can filter them.
 - Known limit: a station's name, brand and address are overwritten when DGEG changes them (no history), so a past
   price shows the station's current attributes.
 

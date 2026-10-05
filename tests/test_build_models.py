@@ -49,3 +49,12 @@ def test_main_runs_every_model_in_order(monkeypatch, tmp_path):
     build_models.main()
 
     assert [c.args[0] for c in client.query.call_args_list] == ["SELECT 1", "SELECT 2"]
+
+
+def test_real_models_run_dimensions_before_facts_and_reports():
+    names = [p.name for p in build_models.model_files()]
+
+    last_dimension = max(i for i, n in enumerate(names) if n.startswith("dim_"))
+    first_dependent = min(i for i, n in enumerate(names) if n.startswith(("fct_", "rpt_")))
+
+    assert last_dimension < first_dependent
