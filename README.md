@@ -19,7 +19,7 @@ Data source: Direcao-Geral de Energia e Geologia (DGEG).
 
 ## Architecture
 _Diagram to add._ Daily GitHub Action -> Python collector -> BigQuery `raw_station_prices` (append only) ->
-`stg_station_prices` (daily series view) -> dimensions `dim_date`, `dim_fuel_type`, `dim_location`, `dim_stations` ->
+`stg_station_prices` (daily series table) -> dimensions `dim_date`, `dim_fuel_type`, `dim_location`, `dim_stations` ->
 fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> Looker Studio.
 
 - `collect-fuel-prices` (06:01 UTC): collects the day's snapshot, then updates the dimensions.
@@ -46,9 +46,9 @@ _To fill after the first weeks of data._
 1. Copy `config.example.env` to `.env` and fill in your GCP project.
 2. `pip install -r requirements.txt`
 3. `python -m src.load_history` (one-off), then `python -m src.collect` (daily).
-4. Create the staging view: run `sql/staging/stg_station_prices.sql` in BigQuery.
-5. `python -m src.build_models` (daily, after the collector) creates and updates the dimensions in `sql/models/`.
-6. Tests: `python -m pytest --cov=src -q` for the Python code; each file in `sql/tests/` is a query that must return 0 rows.
+4. `python -m src.build_models` (daily, after the collector) rebuilds the staging table in `sql/staging/`, then creates
+   and updates the dimensions, the fact and the report view in `sql/models/`.
+5. Tests: `python -m pytest --cov=src -q` for the Python code; each file in `sql/tests/` is a query that must return 0 rows.
 
 ## How I'd deliver this to a client
 _Scope, timeline and deliverables for a fleet or retail price-monitoring engagement. To write at the end._
