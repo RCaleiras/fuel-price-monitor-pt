@@ -19,7 +19,7 @@ Data source: Direcao-Geral de Energia e Geologia (DGEG).
 
 ## Architecture
 _Diagram to add._ Daily GitHub Action -> Python collector -> BigQuery `raw_station_prices` (append only) ->
-`stg_station_prices` (daily series view) -> dimensions `dim_date`, `dim_fuel_type`, `dim_stations` ->
+`stg_station_prices` (daily series view) -> dimensions `dim_date`, `dim_fuel_type`, `dim_location`, `dim_stations` ->
 fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> Looker Studio.
 
 - `collect-fuel-prices` (06:01 UTC): collects the day's snapshot, then updates the dimensions.
@@ -32,6 +32,10 @@ fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> Looke
   dashboard can filter them.
 - Known limit: a station's name, brand and address are overwritten when DGEG changes them (no history), so a past
   price shows the station's current attributes.
+- Places (district > municipality > locality) live in `dim_location`, so the dashboard can drill down over the whole
+  country. DGEG spells the same place in several ways (`Faro` / `FARO`); they are merged, and the name shown is the
+  one that is not all capitals. A place DGEG only ever sends in capitals stays in capitals. A station with no locality
+  shows the locality "Unknown" inside its municipality.
 
 Details, decisions and open questions in `docs/schema.md`; sources and data quality findings in `docs/sources.md`.
 
