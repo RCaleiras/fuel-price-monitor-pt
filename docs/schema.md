@@ -1,18 +1,31 @@
-# Schema (draft v2, updated after the 2026-10-01 sample)
+# Schema (updated 2026-10-05)
 
-Based on one full-day sample (14,018 rows, 3,175 stations, 12 road fuels). Numbers below come from that sample.
+The pipeline collects daily since 2026-10-01. Sample numbers below (14,018 rows, 3,175 stations, 12 road fuels) come
+from the first full-day sample; the daily volume since then is ~13.7k to 14k rows.
 
 ## Layers
-| Layer | Table | Grain | Source |
-|---|---|---|---|
-| raw | `raw_station_prices` | collection run x station x fuel (append only) | DGEG portal API |
-| raw | `raw_weekly_national` | week (Monday) x fuel x component | DGEG Excel, pivot cache (50,736 records) |
-| raw | `raw_history_2004_2009` | week x fuel (retail price only) | DGEG Excel, sheet "Precos (2004 a 2009)" |
-| raw | `raw_tax_events` | legislative change | DGEG Excel, sheet "Legislacao" |
-| model | `dim_stations` | station | table fed from `stg_station_prices` by `src/build_models.py` |
-| model | `dim_fuel_type` | fuel type | table fed from `stg_station_prices` by `src/build_models.py` |
-| staging | `stg_station_prices` (view) | station x fuel x day | daily series built from raw, see "Daily grain" below |
-| model | `fact_price_weekly_national` | week x fuel x component | cleaned raw_weekly_national |
+| Layer | Table | Grain | Source | Status |
+|---|---|---|---|---|
+| raw | `raw_station_prices` | collection run x station x fuel (append only) | DGEG portal API | live, daily |
+| raw | `raw_weekly_national` | week (Monday) x fuel x component | DGEG Excel, pivot cache (50,736 records) | loaded once |
+| raw | `raw_history_2004_2009` | week x fuel (retail price only) | DGEG Excel, sheet "Precos (2004 a 2009)" | loaded once |
+| raw | `raw_tax_events` | legislative change | DGEG Excel, sheet "Legislacao" | planned, not loaded |
+| staging | `stg_station_prices` (view) | station x fuel x day | daily series built from raw, see "Daily grain" below | live |
+| model | `dim_fuel_type` | fuel type | table fed from `stg_station_prices` by `src/build_models.py` | live |
+| model | `dim_stations` | station | table fed from `stg_station_prices` by `src/build_models.py` | live |
+| model | `dim_area` | municipality x scenario area | seed table, see "Decisions" | planned (removed, to redo) |
+| model | daily price fact | station x fuel x day (grain to decide) | `stg_station_prices` + the dimensions | planned, see "Open decisions" |
+| model | `fact_price_weekly_national` | week x fuel x component | cleaned `raw_weekly_national` | planned |
+
+## How the pipeline runs
+1. `collect-fuel-prices` (GitHub Actions, 06:01 UTC; the schedule can start late or skip a day):
+   - step "Run collector" (`src.collect`) appends one snapshot to `raw_station_prices`;
+   - step "Build models" (`src.build_models`) runs `sql/models/*.sql`, which add new fuels and stations to the
+     dimensions. It is a separate step, so a failure there never blocks the raw load.
+2. `check-freshness` (20:30 UTC) fails, and so triggers GitHub's failed-workflow email, if today's data is missing.
+3. `stg_station_prices` is a view, so it is always current. It becomes a table rebuilt daily when Looker Studio is
+   connected (see "Decisions (2026-10-05)").
+4. SQL tests in `sql/tests/` are run by hand with `bq`; each one must return 0 rows.
 
 ## raw_station_prices (store the API fields as they come)
 `Id, Nome, TipoPosto, Marca, Combustivel, Preco, DataAtualizacao, Distrito, Municipio, Localidade, Morada, CodPostal, Latitude, Longitude, Quantidade` + `fuel_id` (we add it) + `collected_at` (UTC, we add it).
@@ -85,7 +98,8 @@ The collector must check this every run and fail loudly if it does not match.
   fuel "Fuel" (2020-07-27 has a 0.0 PVP in the second copy). Deduplicate in staging; the loader does not.
 - `raw_history_2004_2009` drops the "Media Anual" rows; the row "2009-06-08 (*)" has a footnote mark and is kept.
 - Both tables are rebuilt (WRITE_TRUNCATE) on each `python -m src.load_history` run; `--dry-run` parses only.
-- Station attributes (name, brand, address) can change: decide whether `dim_stations` is overwritten or versioned. Default: overwrite, note the limit in the README.
+- Station attributes (name, brand, address) can change. Decided: `dim_stations` overwrites them (latest wins), so a
+  past fact shows the current brand or address, not the one at the time. The limit is noted in the README.
 
 ## Reconciliation with DGEG official data
 Compare our mean price per fuel with the DGEG official weekly PVP.
@@ -108,7 +122,19 @@ Refined question: how much does a 20-vehicle fleet save per year by choosing the
      `TipoPosto = 'Auto-estrada'` (612 rows in the sample) matters here: motorway stations are a separate choice from off-motorway ones.
 - Both scenarios use the same fact table and differ only in the area filter and fuel mix.
 
+## Decisions (2026-10-05)
+- `raw_fuel_types` was removed. The API fuel list is only used by the collector to choose which fuels to collect.
+  Fuel name, unit and fleet flag are computed in `stg_station_prices`; `dim_fuel_type` lists them.
+- Dimensions use surrogate keys, the `-1` Unknown row and a grow-only table (see "Dimension keys").
+- `stg_station_prices` stays a view while data is small. When Looker Studio is connected, it becomes a table rebuilt in
+  full (`CREATE OR REPLACE TABLE`) as the last step of `collect-fuel-prices`, with a freshness test.
+- `dim_area` and the first area fact were built and then removed before being committed; they will be redone together
+  with the fact table plan.
+
 ## Open decisions
+- Daily price fact: which rows count. Published prices only (`observed_that_day`), all rows including carried prices,
+  or carried prices up to X days (`days_since_last_observed`). Re-check the "DGEG hides stale prices" hypothesis
+  around 2026-10-17 with more days first.
 - Weekday patterns: do stations change prices on specific days? (needs a few weeks of snapshots)
 - Exact municipality list for "Greater Lisbon" (e.g. the 18 municipalities of the Lisbon metropolitan area, or a smaller urban core).
 - Whether the corridor scenario compares motorway vs off-motorway stations explicitly.
