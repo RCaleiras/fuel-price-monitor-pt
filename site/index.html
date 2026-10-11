@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Preços dos combustíveis em Portugal por posto, concelho e distrito, atualizados todos os dias a partir dos dados públicos da DGEG.">
+  <title>Preços dos Combustíveis</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Saltar para o conteúdo</a>
+  <header class="page-header">
+    <div class="wrap">
+      <h1>Preços dos combustíveis em Portugal</h1>
+      <p class="lede">Preços publicados por cada posto, para comparar combustíveis, regiões e postos. Atualizado todos os dias a partir dos dados públicos da DGEG.</p>
+      <p class="meta" id="meta" aria-live="polite">A carregar dados…</p>
+      <p class="banner" id="stale" hidden></p>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <div id="status" class="status" role="status">A carregar dados…</div>
+
+    <div id="app" hidden>
+      <form class="filters" id="filters" aria-label="Filtros">
+        <label>Combustível
+          <select id="f-fuel"></select>
+        </label>
+        <label>Distrito
+          <select id="f-district"><option value="">Todo o país</option></select>
+        </label>
+        <label>Concelho
+          <select id="f-municipality" disabled><option value="">Todos os concelhos</option></select>
+        </label>
+        <fieldset class="segmented">
+          <legend>Período do gráfico</legend>
+          <label><input type="radio" name="window" value="7"> 7 dias</label>
+          <label><input type="radio" name="window" value="all" checked> <span id="window-all">Tudo</span></label>
+        </fieldset>
+        <button type="button" id="reset" class="link">Limpar filtros</button>
+      </form>
+
+      <p class="scope" id="scope" aria-live="polite"></p>
+
+      <section aria-labelledby="h-kpi">
+        <h2 id="h-kpi" class="visually-hidden">Indicadores</h2>
+        <div class="tiles" id="tiles"></div>
+        <dl class="stats" id="stats"></dl>
+      </section>
+
+      <section class="card" aria-labelledby="h-trend">
+        <div class="card-head">
+          <h2 id="h-trend">Evolução diária</h2>
+          <p class="note" id="trend-note"></p>
+        </div>
+        <div class="chart" id="trend"></div>
+        <details class="table-view"><summary>Ver dados em tabela</summary><div id="trend-table"></div></details>
+      </section>
+
+      <div class="grid-2">
+        <section class="card" aria-labelledby="h-areas">
+          <div class="card-head">
+            <h2 id="h-areas">Comparação por região</h2>
+            <p class="note" id="areas-note"></p>
+          </div>
+          <div class="chart" id="areas"></div>
+          <details class="table-view"><summary>Ver dados em tabela</summary><div id="areas-table"></div></details>
+        </section>
+
+        <section class="card" aria-labelledby="h-map">
+          <div class="card-head">
+            <h2 id="h-map">Mapa de postos</h2>
+            <p class="note" id="map-note"></p>
+          </div>
+          <div class="map" id="map"></div>
+          <div class="legend" id="map-legend"></div>
+          <div class="station-detail" id="station-detail" aria-live="polite" hidden></div>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="h-stations">
+        <div class="card-head">
+          <h2 id="h-stations">Postos</h2>
+          <p class="note" id="stations-note"></p>
+        </div>
+        <div class="table-tools">
+          <label>Procurar na tabela (posto, marca ou localidade)
+            <input type="search" id="search" autocomplete="off">
+          </label>
+        </div>
+        <div class="table-wrap" id="stations-table"></div>
+        <nav class="pager" id="pager" aria-label="Páginas da tabela de postos"></nav>
+      </section>
+
+      <section class="card" aria-labelledby="h-movers">
+        <div class="card-head">
+          <h2 id="h-movers">Maiores variações por posto</h2>
+          <p class="note" id="movers-note"></p>
+        </div>
+        <div class="grid-2" id="movers"></div>
+      </section>
+
+      <section class="card about" aria-labelledby="h-about">
+        <h2 id="h-about">Como ler estes dados</h2>
+        <dl>
+          <dt>Preço atual</dt>
+          <dd>Preço publicado pelo posto na DGEG no último dia recolhido. Postos que deixaram de publicar ficam de fora; não se repete um preço antigo.</dd>
+          <dt>Mediana</dt>
+          <dd>Valor do meio quando se ordenam os preços dos postos: metade dos postos está abaixo, metade acima. É o indicador principal porque alguns preços anómalos distorcem a média.</dd>
+          <dt>Variação</dt>
+          <dd>Mediana do último dia menos a mediana de 7 dias antes, para os mesmos filtros. Não aparece se um dos dias não tiver dados. As cores nunca indicam “bom” ou “mau”.</dd>
+          <dt>P10–P90</dt>
+          <dd>Faixa onde está 80% dos preços: 10% dos postos estão abaixo de P10 e 10% acima de P90.</dd>
+          <dt>Datas</dt>
+          <dd>Cada dia é o dia de recolha (UTC), feita uma vez por dia. A hora de atualização do posto vem da DGEG (hora de Lisboa) e é apenas informativa.</dd>
+          <dt>Diferença face à DGEG</dt>
+          <dd>Esta é uma média simples dos postos. A média semanal oficial da DGEG é ponderada pelas vendas e costuma ser 2–3% mais baixa. Não comparar diretamente.</dd>
+          <dt>Unidades</dt>
+          <dd>A maioria dos combustíveis é vendida ao litro; o gás natural ao kg ou ao m³. Nunca se misturam unidades.</dd>
+          <dt>Limitações</dt>
+          <dd id="limits">Nome, marca e morada de cada posto são os mais recentes (sem histórico). Cerca de 8% dos postos têm a marca “Genérico”. Só Portugal continental.</dd>
+        </dl>
+      </section>
+    </div>
+  </main>
+
+  <footer class="page-footer">
+    <div class="wrap">
+      <p>Fonte: <a href="https://precoscombustiveis.dgeg.gov.pt/" rel="noopener">Direção-Geral de Energia e Geologia (DGEG)</a>, dados de postos publicados em <a href="https://dados.gov.pt/" rel="noopener">dados.gov.pt</a> (CC BY 4.0). Projeto independente, sem ligação à DGEG.</p>
+      <p><a href="https://github.com/RCaleiras/fuel-price-monitor-pt" rel="noopener">Código e metodologia</a></p>
+    </div>
+  </footer>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+</body>
+</html>

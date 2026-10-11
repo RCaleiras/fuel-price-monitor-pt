@@ -34,3 +34,36 @@ jobs:
           GCP_PROJECT: ${{ vars.GCP_PROJECT }}
           BQ_DATASET: ${{ vars.BQ_DATASET }}
         run: python -m src.build_models
+      # Writes site/data/dashboard.json from the report view; fails (and writes nothing) if a check fails,
+      # so a broken snapshot is never deployed and the site keeps the previous day.
+      - name: Export dashboard
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          BQ_DATASET: ${{ vars.BQ_DATASET }}
+        run: python -m src.export_dashboard --out site/data
+      # Only once GitHub Pages is enabled (repo variable DASHBOARD_DEPLOY = true), so the daily run stays green before.
+      - name: Upload site
+        if: ${{ vars.DASHBOARD_DEPLOY == 'true' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: collect
+    if: ${{ vars.DASHBOARD_DEPLOY == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
