@@ -43,9 +43,10 @@ Details, decisions and open questions in `docs/schema.md`; sources and data qual
 
 ## Dashboard
 Public, interactive and free to run: a static site (`site/`) on GitHub Pages that reads one JSON file exported every
-day from BigQuery by `src/export_dashboard.py`. Filters by fuel, district and municipality; KPIs with the 7-day
-change; daily evolution; region comparison; station map and table; biggest price changes. The browser never touches
-BigQuery. Definitions, data flow, setup and limits: `docs/dashboard.md`.
+day from BigQuery by `src/export_dashboard.py`. In English; filters by fuel, district, municipality, brand and station
+type; a price board with the 7-day change; daily evolution with fuel comparison and a click-to-inspect historical day;
+comparison by region, brand or station type; linked station map and table with a station detail drawer; biggest price
+changes. The whole selection lives in the URL, so views can be shared. The browser never touches BigQuery. Definitions, data flow, setup and limits: `docs/dashboard.md`.
 
 ## Key insights
 _To fill after the first weeks of data._
