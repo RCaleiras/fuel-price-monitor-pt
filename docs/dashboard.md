@@ -72,7 +72,7 @@ formatting), `site/model.js` (derived data, state, URL), `site/story.js` (genera
 ## Verification (2026-10-11)
 - `python -m pytest --cov=src -q`: 69 passed; `src/export_dashboard.py` 95% covered.
 - `node --test "tests/js/*.test.mjs"`: 12 passed (`site/lib.js`).
-- Redesign (same day): `node --test "tests/js/*.test.mjs"`: 28 passed (`site/lib.js`, `site/model.js`, `site/story.js`).
+- Redesign (same day): `node --test "tests/js/*.test.mjs"`: 29 passed (`site/lib.js`, `site/model.js`, `site/story.js`).
   Rendered in a browser at 1440×900 and 375×812, light and dark: the same figures as below (Gasóleo simples 2.224,
   n 2,844, mean 2.208, range 1.939–2.399, change −0.035; Gasolina simples 95 Faro 2.1365 shown as €2.137, n 176;
   station 65363 €2.239). Not tested: screen readers, real touch devices, Firefox/Safari, reduced-motion emulation.
