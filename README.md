@@ -2,8 +2,8 @@
 
 > Automated price-monitoring pipeline: where and when should a delivery fleet refuel?
 
-_Status: in progress. Station prices have been collected daily since 2026-10-01; the staging view and the two
-dimensions are live. The fact table and the Looker Studio dashboard are next._
+_Status: in progress. Station prices have been collected daily since 2026-10-01; the models and a public,
+interactive dashboard (GitHub Pages, refreshed by the daily run) are built. Savings analysis is next._
 
 ## Business question
 How much can a 20-vehicle fleet save by choosing where and when to refuel, by district?
@@ -20,9 +20,11 @@ Data source: Direcao-Geral de Energia e Geologia (DGEG).
 ## Architecture
 _Diagram to add._ Daily GitHub Action -> Python collector -> BigQuery `raw_station_prices` (append only) ->
 `stg_station_prices` (daily series table) -> dimensions `dim_date`, `dim_fuel_type`, `dim_location`, `dim_stations` ->
-fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> Looker Studio.
+fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> daily JSON export -> static dashboard on
+GitHub Pages.
 
-- `collect-fuel-prices` (06:01 UTC): collects the day's snapshot, then updates the dimensions.
+- `collect-fuel-prices` (06:01 UTC): collects the day's snapshot, updates the models, exports the dashboard data and
+  deploys the site.
 - `check-freshness` (20:30 UTC): fails and sends an email if today's data is missing.
 
 ## Data model
@@ -39,6 +41,12 @@ fact `fct_station_price_daily` -> report view `rpt_station_price_daily` -> Looke
 
 Details, decisions and open questions in `docs/schema.md`; sources and data quality findings in `docs/sources.md`.
 
+## Dashboard
+Public, interactive and free to run: a static site (`site/`) on GitHub Pages that reads one JSON file exported every
+day from BigQuery by `src/export_dashboard.py`. Filters by fuel, district and municipality; KPIs with the 7-day
+change; daily evolution; region comparison; station map and table; biggest price changes. The browser never touches
+BigQuery. Definitions, data flow, setup and limits: `docs/dashboard.md`.
+
 ## Key insights
 _To fill after the first weeks of data._
 
@@ -48,10 +56,13 @@ _To fill after the first weeks of data._
 3. `python -m src.load_history` (one-off), then `python -m src.collect` (daily).
 4. `python -m src.build_models` (daily, after the collector) rebuilds the staging table in `sql/staging/`, then creates
    and updates the dimensions, the fact and the report view in `sql/models/`.
-5. Tests: `python -m pytest --cov=src -q` for the Python code; each file in `sql/tests/` is a query that must return 0 rows.
+5. `python -m src.export_dashboard --out site/data` writes the dashboard data; `python -m http.server -d site` serves it.
+6. Tests: `python -m pytest --cov=src -q` for the Python code; `node --test "tests/js/*.test.mjs"` for the dashboard
+   logic; each file in `sql/tests/` is a query that must return 0 rows.
 
 ## How I'd deliver this to a client
 _Scope, timeline and deliverables for a fleet or retail price-monitoring engagement. To write at the end._
 
 ## Demo
-_60-90 s video and Looker Studio link to add._
+_Live link: https://rcaleiras.github.io/fuel-price-monitor-pt/ (once Pages is enabled, see `docs/dashboard.md`).
+60-90 s video to add._
