@@ -32,20 +32,50 @@ prices of stations DGEG stopped publishing are excluded and counted separately. 
 
 | KPI | Formula | Where |
 |---|---|---|
-| Median price | exact median (linear interpolation, like `PERCENTILE_CONT(…, 0.5)`) of the latest day's prices | tiles, stats |
+| Median price | exact median (linear interpolation, like `PERCENTILE_CONT(…, 0.5)`) of the day's prices | price board, stats, summary |
 | Mean, min, max, stations | simple mean, min, max, count of the same prices | stats |
-| Change | median(latest day) − median(latest day − 7), same filters; hidden if either day has no price, or if the station counts of the two days differ by more than 20% (the change would reflect which stations published); % only when the reference > 0 | tiles |
-| Daily evolution | median, P10, P90 per day | trend chart |
-| Region comparison | median, min, max, n per district / municipality / locality on the latest day | region chart |
-| Movers | per station: latest price − price 7 days before, only stations published on both days | movers tables |
-| Price changes (country) | `is_price_change` among published prices, latest day | stats (no area filter only) |
+| Change | median(day) − median(day − 7), same filters; hidden if either day has no price, or if the station counts of the two days differ by more than 20% (the change would reflect which stations published); % only when the reference > 0 | price board, summary |
+| Daily evolution | median, P10, P90 per day (one median line per fuel in compare mode) | trend chart |
+| Comparison | median, P10, P90, min, max, n per district / municipality / locality, per brand (≥ 10 stations) or per station type on the day | comparison chart |
+| vs median | station price − median of the current filters, same day | station table |
+| Movers | per station: price on the day − price 7 days before, only stations published on both days | movers tables |
+| Price changes (country) | `is_price_change` among published prices, that day | stats (no area, brand or type filter only) |
 
-All calculations happen in the browser over the exported prices (`site/lib.js`), so every filter combination uses the
-same rules. The simple median and mean are not the DGEG official weekly average (volume-weighted, about 2–3% lower).
+"The day" is the latest collected day unless the reader inspects an earlier day on the trend chart (see below).
+All calculations happen in the browser over the exported prices (`site/lib.js`, selected by `site/model.js`), so every
+filter combination uses the same rules. The simple median and mean are not the DGEG official weekly average
+(volume-weighted, about 2–3% lower).
+
+## Interface (redesign 2026-10-11)
+English throughout (en-GB formats: `€2.224/L`, `11 Oct 2026`). Fuel names are English with DGEG's Portuguese name
+alongside; places, brands and station names are shown exactly as published (brand names only have stray spaces
+trimmed). Layout: filter rail (a bottom sheet on phones), selection bar with removable chips, a one-sentence summary,
+the graphite price board, then linked panels.
+
+| Interaction | What it does |
+|---|---|
+| Fuel card on the price board | selects that fuel in every panel; hover/focus shows median, P10–P90, change and station count |
+| Filters (fuel, chart period, district, municipality, brand, station type) | narrow every panel; each active filter is a chip with its own ✕; "Reset all" clears them |
+| Compare fuels | median lines of the litre-priced fleet fuels on one axis; legend buttons show/hide series (premium grades dashed) |
+| Click a day on the trend chart (or Enter) | historical view: board, summary, comparison, map, table and movers show that day; a banner and a chip say so; "Back to latest" or Esc returns |
+| Comparison row | region rows drill down (district → municipality); brand and type rows filter the whole page (the brand/type chart itself ignores its own filter so the selection stays in context) |
+| Map dot, table row, mover row | opens the station drawer: every fuel it published that day, its history, its gap to the district median |
+| Table row hover/focus | rings the station on the map |
+| `/` and Esc | focus search; close drawer/sheet or return to the latest day |
+
+The URL keeps the whole selection (`fuel`, `district`, `municipality`, `brand`, `type`, `days`, `day`, `group`, `sort`,
+`dir`, `station`, `q`), validated against the data on load; the first dashboard's Portuguese parameters
+(`combustivel`, `distrito`, `concelho`, `periodo=7`) still open the same view. Files: `site/lib.js` (calculations and
+formatting), `site/model.js` (derived data, state, URL), `site/story.js` (generated sentences), `site/charts.js`,
+`site/ui.js`, `site/views.js`, `site/app.js`, `site/styles.css`. Fonts are the device's own (no downloads).
 
 ## Verification (2026-10-11)
 - `python -m pytest --cov=src -q`: 69 passed; `src/export_dashboard.py` 95% covered.
 - `node --test "tests/js/*.test.mjs"`: 12 passed (`site/lib.js`).
+- Redesign (same day): `node --test "tests/js/*.test.mjs"`: 28 passed (`site/lib.js`, `site/model.js`, `site/story.js`).
+  Rendered in a browser at 1440×900 and 375×812, light and dark: the same figures as below (Gasóleo simples 2.224,
+  n 2,844, mean 2.208, range 1.939–2.399, change −0.035; Gasolina simples 95 Faro 2.1365 shown as €2.137, n 176;
+  station 65363 €2.239). Not tested: screen readers, real touch devices, Firefox/Safari, reduced-motion emulation.
 - `sql/tests/dashboard_station_prices_match_fact.sql` and `dashboard_stations_unique.sql`: 0 rows.
 - Browser vs independent SQL on the fact table, latest day 2026-10-11, all equal:
   Gasóleo simples national median 2.224 (n 2,844, mean 2.2084, min 1.939, max 2.399); 7-day change −0.035 (reference

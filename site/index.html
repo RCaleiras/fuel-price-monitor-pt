@@ -1,140 +1,161 @@
 <!doctype html>
-<html lang="pt-PT">
+<html lang="en-GB">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <meta name="description" content="Preços dos combustíveis em Portugal por posto, concelho e distrito, atualizados todos os dias a partir dos dados públicos da DGEG.">
-  <title>Preços dos Combustíveis</title>
+  <meta name="description" content="Fuel prices in mainland Portugal by station, municipality, district, brand and station type, updated every day from DGEG open data.">
+  <title>Portugal Fuel Prices</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="app.js"></script>
 </head>
-<body>
-  <a class="skip" href="#main">Saltar para o conteúdo</a>
-  <header class="page-header">
-    <div class="wrap">
-      <h1>Preços dos combustíveis em Portugal</h1>
-      <p class="lede">Preços publicados por cada posto, para comparar combustíveis, regiões e postos. Atualizado todos os dias a partir dos dados públicos da DGEG.</p>
-      <p class="meta" id="meta" aria-live="polite">A carregar dados…</p>
-      <p class="banner" id="stale" hidden></p>
+<body class="is-loading">
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="appbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="4" width="14" height="24" rx="2.5"/><rect x="8" y="8" width="8" height="6" rx="1" class="cut"/><path d="M19 11h3.5a2.5 2.5 0 0 1 2.5 2.5V22a2 2 0 0 0 4 0V10l-3-3" class="hose"/></svg>
+      <p class="brand-name">Fuel Monitor <span>Portugal</span></p>
     </div>
+    <div class="fresh" id="fresh" aria-live="polite"><span class="fm-skel fresh-skel"></span></div>
+    <label class="gsearch"><span class="visually-hidden">Search stations by name, brand or place</span>
+      <input type="search" id="search" placeholder="Search stations, brands, places" autocomplete="off" aria-keyshortcuts="/" maxlength="80">
+      <kbd aria-hidden="true">/</kbd>
+    </label>
+    <button type="button" class="filters-btn" id="filters-btn" aria-controls="rail" aria-expanded="false">Filters <span class="badge" id="filter-count" hidden></span></button>
   </header>
 
-  <main id="main" class="wrap">
-    <div id="status" class="status" role="status">A carregar dados…</div>
-
-    <div id="app" hidden>
-      <form class="filters" id="filters" aria-label="Filtros">
-        <label>Combustível
-          <select id="f-fuel"></select>
-        </label>
-        <label>Distrito
-          <select id="f-district"><option value="">Todo o país</option></select>
-        </label>
-        <label>Concelho
-          <select id="f-municipality" disabled><option value="">Todos os concelhos</option></select>
-        </label>
-        <fieldset class="segmented">
-          <legend>Período do gráfico</legend>
-          <label><input type="radio" name="window" value="7"> 7 dias</label>
-          <label><input type="radio" name="window" value="all" checked> <span id="window-all">Tudo</span></label>
+  <div class="shell">
+    <aside class="rail" id="rail" aria-labelledby="h-filters">
+      <div class="rail-head"><h2 id="h-filters">Filters</h2><button type="button" class="fm-icon-btn rail-close" id="rail-close" aria-label="Close filters">✕</button></div>
+      <form id="filters" class="rail-form" data-skel>
+        <label class="f">Fuel<select id="f-fuel"></select></label>
+        <div class="f"><span id="range-label">Chart period</span><div data-range-segmented role="radiogroup" aria-labelledby="range-label"></div></div>
+        <fieldset class="group"><legend>Geography</legend>
+          <label class="f">District<select id="f-district"></select></label>
+          <label class="f">Municipality<select id="f-municipality"></select></label>
         </fieldset>
-        <button type="button" id="reset" class="link">Limpar filtros</button>
+        <fieldset class="group"><legend>Station</legend>
+          <label class="f">Brand<select id="f-brand"></select></label>
+          <label class="f">Type<select id="f-type"></select></label>
+        </fieldset>
       </form>
+      <div class="rail-foot">
+        <button type="button" class="fm-btn ghost" id="reset-all">Reset all filters</button>
+        <button type="button" class="fm-btn rail-done" id="rail-done">Show results</button>
+        <p class="rail-note">Keyboard: <kbd>/</kbd> search · <kbd>Esc</kbd> closes a panel or returns to the latest day. The page address keeps your selection, so you can bookmark or share it.</p>
+      </div>
+    </aside>
 
-      <p class="scope" id="scope" aria-live="polite"></p>
+    <main id="main" class="main">
+      <h1 class="visually-hidden">Fuel prices in mainland Portugal</h1>
+      <div class="selbar" aria-label="Current selection">
+        <p class="sel-scope" id="scope"></p>
+        <div class="chips" id="chips" aria-live="polite"></div>
+      </div>
+      <div class="fm-hist" id="history" role="status" hidden></div>
+      <p class="stale" id="stale" role="alert" hidden></p>
+      <div id="status" role="status"></div>
 
-      <section aria-labelledby="h-kpi">
-        <h2 id="h-kpi" class="visually-hidden">Indicadores</h2>
-        <div class="tiles" id="tiles"></div>
-        <dl class="stats" id="stats"></dl>
-      </section>
+      <p class="summary" id="summary" aria-live="polite" data-skel><span class="fm-skel"></span></p>
 
-      <section class="card" aria-labelledby="h-trend">
-        <div class="card-head">
-          <h2 id="h-trend">Evolução diária</h2>
-          <p class="note" id="trend-note"></p>
+      <section class="board" aria-labelledby="h-kpi">
+        <div class="board-head">
+          <h2 id="h-kpi">Median pump price</h2>
+          <span class="board-day" id="board-day"></span>
+          <button type="button" class="info" id="kpi-info" aria-describedby="kpi-help">i</button>
+          <span class="visually-hidden" id="kpi-help">How these prices are calculated</span>
         </div>
-        <div class="chart" id="trend"></div>
-        <details class="table-view"><summary>Ver dados em tabela</summary><div id="trend-table"></div></details>
+        <div class="kpis" id="kpis" data-skel><span class="fm-skel tall"></span></div>
+        <p class="board-foot">Change vs 7 days earlier · ▲ dearer ▼ cheaper · colour identifies the fuel, never good or bad. Select a fuel to drive every panel.</p>
       </section>
 
-      <div class="grid-2">
-        <section class="card" aria-labelledby="h-areas">
-          <div class="card-head">
-            <h2 id="h-areas">Comparação por região</h2>
-            <p class="note" id="areas-note"></p>
+      <div class="grid">
+        <section class="panel trend" aria-labelledby="h-trend">
+          <div class="panel-head">
+            <div><h2 id="h-trend">Daily median</h2><p class="note" id="trend-note"></p></div>
+            <div class="seg2" role="group" aria-label="Chart mode">
+              <button type="button" id="mode-single" aria-pressed="true">Selected fuel</button>
+              <button type="button" id="mode-compare" aria-pressed="false">Compare fuels</button>
+            </div>
           </div>
-          <div class="chart" id="areas"></div>
-          <details class="table-view"><summary>Ver dados em tabela</summary><div id="areas-table"></div></details>
+          <div class="legend-row" id="legend" aria-label="Series shown"></div>
+          <div class="chart" id="trend" data-skel><span class="fm-skel tall"></span></div>
+          <div class="panel-foot"><dl class="stats" id="stats"></dl><span class="note">Hover or use ← → on the chart to read a day · click or Enter to inspect it</span></div>
+          <details class="data-table"><summary>View chart data as a table</summary><div id="trend-table"></div></details>
         </section>
 
-        <section class="card" aria-labelledby="h-map">
-          <div class="card-head">
-            <h2 id="h-map">Mapa de postos</h2>
-            <p class="note" id="map-note"></p>
+        <section class="panel compare" aria-labelledby="h-compare">
+          <div class="panel-head">
+            <div><h2 id="h-compare">Compare</h2><p class="note" id="compare-note"></p></div>
+            <div class="tabs" role="tablist" aria-label="Compare by">
+              <button type="button" role="tab" data-group="region" aria-controls="dots">Region</button>
+              <button type="button" role="tab" data-group="brand" aria-controls="dots">Brand</button>
+              <button type="button" role="tab" data-group="type" aria-controls="dots">Type</button>
+            </div>
           </div>
-          <div class="map" id="map"></div>
-          <div class="legend" id="map-legend"></div>
-          <div class="station-detail" id="station-detail" aria-live="polite" hidden></div>
+          <p class="sentence" id="compare-sentence" aria-live="polite"></p>
+          <div class="dots" id="dots" role="tabpanel" aria-labelledby="h-compare" data-skel><span class="fm-skel tall"></span></div>
+          <p class="note" id="dots-foot"></p>
+          <details class="data-table"><summary>View comparison as a table</summary><div id="dots-table"></div></details>
+        </section>
+
+        <section class="panel map-panel" aria-labelledby="h-map">
+          <div class="panel-head"><div><h2 id="h-map">Station map</h2><p class="note" id="map-note"></p></div></div>
+          <div class="map" id="map" data-skel><span class="fm-skel tall"></span></div>
+          <div id="map-legend"></div>
+          <p class="note">Hover a table row to locate it here. On the map, ← → step from the cheapest to the dearest station; Enter opens it.</p>
+        </section>
+
+        <section class="panel table-panel" aria-labelledby="h-stations">
+          <div class="panel-head"><div><h2 id="h-stations">Stations</h2><p class="note" id="stations-note"></p></div></div>
+          <div id="stations" data-skel></div>
+        </section>
+
+        <section class="panel movers-panel" aria-labelledby="h-movers">
+          <div class="panel-head"><div><h2 id="h-movers">Biggest station price changes in a week</h2><p class="note" id="movers-note"></p></div></div>
+          <div class="movers" id="movers"></div>
         </section>
       </div>
 
-      <section class="card" aria-labelledby="h-stations">
-        <div class="card-head">
-          <h2 id="h-stations">Postos</h2>
-          <p class="note" id="stations-note"></p>
-        </div>
-        <div class="table-tools">
-          <label>Procurar na tabela (posto, marca ou localidade)
-            <input type="search" id="search" autocomplete="off">
-          </label>
-        </div>
-        <div class="table-wrap" id="stations-table"></div>
-        <nav class="pager" id="pager" aria-label="Páginas da tabela de postos"></nav>
+      <section class="about" aria-labelledby="h-about">
+        <details id="about">
+          <summary><h2 id="h-about">How to read this data</h2></summary>
+          <dl>
+            <dt>Current price</dt>
+            <dd>The price each station published to DGEG on the latest collection day. Stations that stopped publishing are left out; an old price is never repeated.</dd>
+            <dt>Median</dt>
+            <dd>The middle value when the stations' prices are sorted: half are cheaper, half dearer. It is the headline figure because a few unusual prices distort the mean.</dd>
+            <dt>Change</dt>
+            <dd>The median on the day shown minus the median 7 days earlier, with the same filters. It is hidden when either day has no prices, or when the number of stations differs by more than 20% between the two days (the change would reflect which stations published, not prices). Colours never mean “good” or “bad”.</dd>
+            <dt>P10–P90</dt>
+            <dd>The range holding 80% of prices: 10% of stations are below P10 and 10% above P90.</dd>
+            <dt>Dates</dt>
+            <dd>Each day is the collection day (UTC); prices are collected once a day. A station's DGEG update time is shown in Lisbon time and is for information only; it is only kept for the latest price.</dd>
+            <dt>Difference from DGEG</dt>
+            <dd>This is a simple median of stations. DGEG's official weekly average is weighted by sales and is usually 2–3% lower. Do not compare them directly.</dd>
+            <dt>Units</dt>
+            <dd>Most fuels are sold per litre; natural gas per kg or per m³. Units are never mixed, and only fuels sold per litre are compared on one chart.</dd>
+            <dt>Names</dt>
+            <dd>Fuel names are shown in English with DGEG's original Portuguese name alongside. Places, brands and station names are exactly as DGEG publishes them.</dd>
+            <dt>Limits</dt>
+            <dd>Station name, brand and address are the latest ones (no history). About 8% of stations carry the brand “Genérico”. Brands with fewer than 10 stations are not plotted in the brand comparison. Mainland Portugal only.</dd>
+          </dl>
+        </details>
       </section>
 
-      <section class="card" aria-labelledby="h-movers">
-        <div class="card-head">
-          <h2 id="h-movers">Maiores variações por posto</h2>
-          <p class="note" id="movers-note"></p>
-        </div>
-        <div class="grid-2" id="movers"></div>
-      </section>
+      <footer class="foot">
+        <p>Source: <a href="https://precoscombustiveis.dgeg.gov.pt/" rel="noopener">Direção-Geral de Energia e Geologia (DGEG)</a>, station data published on <a href="https://dados.gov.pt/" rel="noopener">dados.gov.pt</a> (CC BY 4.0). Independent project, not affiliated with DGEG. <a href="https://github.com/RCaleiras/fuel-price-monitor-pt" rel="noopener">Code and methodology</a>.</p>
+      </footer>
+    </main>
+  </div>
 
-      <section class="card about" aria-labelledby="h-about">
-        <h2 id="h-about">Como ler estes dados</h2>
-        <dl>
-          <dt>Preço atual</dt>
-          <dd>Preço publicado pelo posto na DGEG no último dia recolhido. Postos que deixaram de publicar ficam de fora; não se repete um preço antigo.</dd>
-          <dt>Mediana</dt>
-          <dd>Valor do meio quando se ordenam os preços dos postos: metade dos postos está abaixo, metade acima. É o indicador principal porque alguns preços anómalos distorcem a média.</dd>
-          <dt>Variação</dt>
-          <dd>Mediana do último dia menos a mediana de 7 dias antes, para os mesmos filtros. Não aparece se um dos dias não tiver dados. As cores nunca indicam “bom” ou “mau”.</dd>
-          <dt>P10–P90</dt>
-          <dd>Faixa onde está 80% dos preços: 10% dos postos estão abaixo de P10 e 10% acima de P90.</dd>
-          <dt>Datas</dt>
-          <dd>Cada dia é o dia de recolha (UTC), feita uma vez por dia. A hora de atualização do posto vem da DGEG (hora de Lisboa) e é apenas informativa.</dd>
-          <dt>Diferença face à DGEG</dt>
-          <dd>Esta é uma média simples dos postos. A média semanal oficial da DGEG é ponderada pelas vendas e costuma ser 2–3% mais baixa. Não comparar diretamente.</dd>
-          <dt>Unidades</dt>
-          <dd>A maioria dos combustíveis é vendida ao litro; o gás natural ao kg ou ao m³. Nunca se misturam unidades.</dd>
-          <dt>Limitações</dt>
-          <dd id="limits">Nome, marca e morada de cada posto são os mais recentes (sem histórico). Cerca de 8% dos postos têm a marca “Genérico”. Só Portugal continental.</dd>
-        </dl>
-      </section>
-    </div>
-  </main>
-
-  <footer class="page-footer">
-    <div class="wrap">
-      <p>Fonte: <a href="https://precoscombustiveis.dgeg.gov.pt/" rel="noopener">Direção-Geral de Energia e Geologia (DGEG)</a>, dados de postos publicados em <a href="https://dados.gov.pt/" rel="noopener">dados.gov.pt</a> (CC BY 4.0). Projeto independente, sem ligação à DGEG.</p>
-      <p><a href="https://github.com/RCaleiras/fuel-price-monitor-pt" rel="noopener">Código e metodologia</a></p>
-    </div>
-  </footer>
-  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Station details" hidden>
+    <div class="drawer-body" id="detail"></div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
 </body>
 </html>

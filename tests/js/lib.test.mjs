@@ -4,13 +4,20 @@ import { test } from "node:test";
 
 import {
   compareDays,
+  direction,
   filterPairs,
   formatDate,
+  formatDay,
+  formatDelta,
+  formatEuro,
+  formatPercent,
   formatPrice,
   groupSummary,
   loadModel,
   movers,
+  priceBins,
   quantile,
+  referenceFor,
   referenceIndex,
   seriesByDay,
   staleDays,
@@ -124,11 +131,41 @@ test("movers compares stations published on both days only, biggest change first
   assert.deepEqual(result.map((m) => [m.station.code, m.change]), [[101, 100], [202, -50]]);
 });
 
-test("formatPrice and formatDate use Portuguese conventions", () => {
-  assert.equal(formatPrice(2207, "litro"), "2,207 €/l");
-  assert.equal(formatPrice(3279, "kg"), "3,279 €/kg");
-  assert.equal(formatPrice(null, "litro"), "sem dados");
-  assert.equal(formatDate("2026-10-11"), "11/10/2026");
+test("formatters use English conventions: euro first, three decimals, unambiguous dates", () => {
+  assert.equal(formatPrice(2207, "litro"), "€2.207/L");
+  assert.equal(formatPrice(3279, "kg"), "€3.279/kg");
+  assert.equal(formatPrice(1234, "m3"), "€1.234/m³");
+  assert.equal(formatPrice(null, "litro"), "No data");
+  assert.equal(formatEuro(undefined), "–");
+  assert.equal(formatDate("2026-10-11"), "11 Oct 2026");
+  assert.equal(formatDay("2026-10-04"), "4 Oct");
+});
+
+test("formatDelta and formatPercent sign changes with a true minus sign", () => {
+  assert.equal(formatDelta(-35), "−€0.035");
+  assert.equal(formatDelta(40), "+€0.040");
+  assert.equal(formatDelta(0), "±€0.000");
+  assert.equal(formatDelta(null), "–");
+  assert.equal(formatPercent(-0.0153), "−1.5%");
+  assert.equal(formatPercent(0.042), "+4.2%");
+  assert.equal(formatPercent(null), "");
+});
+
+test("direction classifies a change, and missing changes are 'none'", () => {
+  assert.deepEqual([direction(5), direction(-5), direction(0), direction(null)], ["up", "down", "flat", "none"]);
+});
+
+test("referenceFor returns the ISO date 7 days earlier even when it is outside the data", () => {
+  assert.deepEqual(referenceFor(payload.dates, 7, 7), { index: 0, iso: "2026-10-04" });
+  assert.deepEqual(referenceFor(payload.dates, 3, 7), { index: null, iso: "2026-09-30" });
+});
+
+test("priceBins splits prices into up to five equal-count bands and merges equal edges", () => {
+  const bins = priceBins([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(bins.length, 5);
+  assert.deepEqual([bins[0].min, bins[4].max], [1, 10]);
+  assert.equal(priceBins([5, 5, 5]).length, 1);
+  assert.deepEqual(priceBins([]), []);
 });
 
 test("staleDays counts whole days between the data day and today (UTC)", () => {
