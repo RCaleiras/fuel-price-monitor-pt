@@ -34,6 +34,14 @@ jobs:
           GCP_PROJECT: ${{ vars.GCP_PROJECT }}
           BQ_DATASET: ${{ vars.BQ_DATASET }}
         run: python -m src.build_models
+      # Runs every query in sql/tests/ (read-only, ~540 MiB billed, each capped); any row or error fails the job here,
+      # before the export, so a snapshot that breaks a data rule is not published and the site keeps the previous day.
+      - name: Run SQL tests
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          BQ_DATASET: ${{ vars.BQ_DATASET }}
+        run: python -m src.run_sql_tests
       # Writes site/data/dashboard.json from the report view; fails (and writes nothing) if a check fails,
       # so a broken snapshot is never deployed and the site keeps the previous day.
       - name: Export dashboard
