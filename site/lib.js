@@ -73,9 +73,10 @@ export function dayValues(pairs, dayIndex) {
   return out;
 }
 
-/** One summary per day (null on a day with no published price). */
-export function seriesByDay(pairs, nDays) {
-  return Array.from({ length: nDays }, (_, i) => summarize(dayValues(pairs, i)));
+/** One summary per day (null on a day with no published price). `from` skips the days before it: the result is the
+ * same as `seriesByDay(pairs, nDays).slice(from)`, without computing the skipped days. */
+export function seriesByDay(pairs, nDays, from = 0) {
+  return Array.from({ length: Math.max(0, nDays - from) }, (_, i) => summarize(dayValues(pairs, from + i)));
 }
 
 /** Index of the date `days` before the latest date, or null if it is outside the window. */

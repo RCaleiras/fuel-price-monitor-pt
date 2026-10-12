@@ -11,6 +11,7 @@ export const COMPARE_DAYS = 7;
 const MIN_COVERAGE_RATIO = 0.8;
 export const MIN_BRAND_STATIONS = 10; // brand comparison: a median of a handful of stations is not plotted
 export const RANGE_OPTIONS = [7, 14, 30];
+const SERIES_CACHE_MAX = 64; // fuel x filter combinations kept; a full cache is emptied, never grows without bound
 
 // ---------- English labels (display only; DGEG names stay in the data and are shown as the original) ----------
 const FUEL_LABELS = {
@@ -109,7 +110,31 @@ export function createData(model) {
     return base.filter((p) => (!state.brand || p.station.brand === state.brand) && (!state.type || p.station.type === state.type));
   }
 
-  /** Median on the inspected day vs 7 days earlier, with the reason when there is no reliable comparison. */
+  // The per-day summaries of a fuel depend only on the fuel and the area, brand and type filters: not on the period,
+  // the inspected day or the sort. They are kept per createData (new data = new cache), so changing the fuel, period
+  // or day does not recompute them. Cached arrays are frozen because they are shared between callers.
+  const seriesCache = new Map();
+  const seriesKey = (state, fuelId) => JSON.stringify([fuelId, state.district, state.municipality, state.brand, state.type]);
+
+  function fullSeries(state, fuelId, fuelPairs) {
+    const key = seriesKey(state, fuelId);
+    let series = seriesCache.get(key);
+    if (!series) {
+      series = Object.freeze(seriesByDay(fuelPairs ?? pairs(state, fuelId), dates.length));
+      if (seriesCache.size >= SERIES_CACHE_MAX) seriesCache.clear();
+      seriesCache.set(key, series);
+    }
+    return series;
+  }
+
+  /** The series from day `start` on: sliced from the cache when it is there, else only those days are computed. */
+  function windowSeries(state, fuelId, start) {
+    const cached = seriesCache.get(seriesKey(state, fuelId));
+    return cached ? cached.slice(start) : seriesByDay(pairs(state, fuelId), dates.length, start);
+  }
+
+  /** Median on the inspected day vs 7 days earlier, with the reason when there is no reliable comparison.
+   * `series` (every day, for the sparkline) is computed on first read, so callers that do not draw it do not pay. */
   function kpi(state, fuelId) {
     const idx = dayIndex(state);
     const ref = referenceFor(dates, idx, COMPARE_DAYS);
@@ -127,7 +152,7 @@ export function createData(model) {
       }
     }
     return { fuel: fuelById.get(fuelId), ...cmp, comparable, reason, refIso: ref.iso, dayIso: dates[idx],
-      series: seriesByDay(fuelPairs, dates.length) };
+      get series() { return fullSeries(state, fuelId, fuelPairs); } };
   }
 
   const windowStart = (state) => (state.range === "all" ? 0 : Math.max(0, dates.length - Number(state.range)));
@@ -146,7 +171,7 @@ export function createData(model) {
     return {
       start,
       dates: dates.slice(start),
-      series: fuelIds.map((id) => ({ fuel: fuelById.get(id), points: seriesByDay(pairs(state, id), dates.length).slice(start) })),
+      series: fuelIds.map((id) => ({ fuel: fuelById.get(id), points: windowSeries(state, id, start) })),
     };
   }
 
