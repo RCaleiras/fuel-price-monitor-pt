@@ -1,0 +1,41 @@
+name: validate-sql
+
+# Read-only check of the SQL tests in sql/tests/ against the real dataset. It never runs the collector, builds
+# models, exports the dashboard, uploads the site or deploys, so it cannot write data or publish anything.
+# Runs on pull requests that touch the tests or the runner (from the PR's own commit), and by hand.
+# Needs the same secret and variables as collect.yml.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "sql/**"
+      - "src/run_sql_tests.py"
+      - ".github/workflows/validate-sql.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-sql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The PR's own commit, not the merge with main, so the run tests exactly the code under review.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run SQL tests
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          BQ_DATASET: ${{ vars.BQ_DATASET }}
+        run: python -m src.run_sql_tests
