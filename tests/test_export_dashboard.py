@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -251,3 +251,105 @@ def test_main_writes_nothing_when_validation_fails(monkeypatch, tmp_path):
 def test_main_rejects_a_window_out_of_range(tmp_path):
     with pytest.raises(SystemExit):
         ed.main(["--out", str(tmp_path), "--window-days", "0"])
+
+
+# ---------- Phase 1: up to 90 days of recent per-station history ----------
+
+
+def long_history_results(first: date, latest: date, n_stations: int = 40, n_fuels: int = 3):
+    """Every station x fuel pair published on every day of the last 90 days up to `latest` (synthetic, for limits
+    only). Coverage still starts at `first`: the SQL only returns prices inside the window."""
+    n_days = (latest - first).days + 1
+    days = [latest - timedelta(days=i) for i in reversed(range(min(n_days, ed.MAX_WINDOW_DAYS)))]
+    fuel_rows = [{"fuel_sk": f, "fuel_name": f"Fuel {f}", "unit": "litro", "is_fleet_fuel": True, "n_prices": 1}
+                 for f in range(1, n_fuels + 1)]
+    station_rows = [{"station_code": 1000 + s, "station_name": f"S{s}", "station_type": "Outro", "brand": "B",
+                     "district": "D", "municipality": "M", "locality": "L", "address": "A", "latitude": 38.0,
+                     "longitude": -9.0} for s in range(n_stations)]
+    pairs = [{"station_code": 1000 + s, "fuel_sk": f,
+              "prices": [{"price_date": d, "price_eur": Decimal("1.700")} for d in days],
+              "last_price_updated_at": None}
+             for s in range(n_stations) for f in range(1, n_fuels + 1)]
+    return {
+        "01_fuels": fuel_rows, "02_stations": station_rows, "03_station_prices": pairs,
+        "04_daily_activity": [],
+        "05_coverage": [{"first_date": first, "latest_date": latest, "n_days": len(days)}],
+    }
+
+
+def test_the_default_window_is_the_90_day_maximum():
+    assert ed.DEFAULT_WINDOW_DAYS == 90
+    assert ed.MAX_WINDOW_DAYS == 90
+
+
+def test_main_uses_the_90_day_window_by_default(monkeypatch, tmp_path):
+    results = query_results()
+    seen = []
+    monkeypatch.setattr(ed, "build_client", MagicMock)
+
+    def fake_run(client, path, window_days):
+        seen.append(window_days)
+        return results[path.stem]
+
+    monkeypatch.setattr(ed, "run_query", fake_run)
+
+    ed.main(["--out", str(tmp_path)])
+
+    assert set(seen) == {90}
+    assert json.loads((tmp_path / ed.OUTPUT_FILE).read_text(encoding="utf-8"))["window_days"] == 90
+
+
+def test_a_full_history_is_cut_to_exactly_90_days_ending_on_the_latest_day():
+    results = long_history_results(date(2026, 6, 1), date(2026, 10, 11))
+
+    payload = ed.build_payload(results, window_days=90, generated_at=GENERATED_AT)
+
+    assert len(payload["dates"]) == 90
+    assert payload["dates"][0] == "2026-07-14"
+    assert payload["dates"][-1] == "2026-10-11"
+    assert payload["coverage"]["first_date"] == "2026-06-01"
+
+
+def test_with_fewer_than_90_days_collected_only_the_days_that_exist_are_shown():
+    payload = build(window_days=90)
+
+    assert len(payload["dates"]) == 11
+    assert payload["dates"][0] == payload["coverage"]["first_date"]
+    assert payload["window_days"] == 90
+
+
+def test_days_without_a_published_price_stay_null_and_are_never_filled():
+    results = long_history_results(date(2026, 7, 1), date(2026, 10, 11), n_stations=1, n_fuels=1)
+    only_two = [p for p in results["03_station_prices"][0]["prices"]
+                if p["price_date"] in (date(2026, 8, 1), date(2026, 10, 11))]
+    results["03_station_prices"][0]["prices"] = only_two
+
+    payload = ed.build_payload(results, window_days=90, generated_at=GENERATED_AT)
+
+    cells = payload["prices"]["rows"][0][2]
+    assert len(cells) == 90
+    assert [c for c in cells if c is not None] == [1700, 1700]
+    assert cells.count(None) == 88
+
+
+def test_validate_rejects_the_same_station_and_fuel_twice():
+    twice = station_prices() + [station_prices()[0]]
+    with pytest.raises(ValueError, match="duplicate"):
+        build(**{"03_station_prices": twice})
+
+
+def test_a_full_90_day_file_for_a_realistic_number_of_pairs_fits_under_the_size_cap(tmp_path):
+    # 3,300 stations x 4.4 fuels on average ~ 14,500 pairs (2026-10-12: 14,432), every cell filled = worst case
+    results = long_history_results(date(2026, 7, 14), date(2026, 10, 11), n_stations=3300, n_fuels=4)
+
+    payload = ed.build_payload(results, window_days=90, generated_at=GENERATED_AT)
+    path = ed.write_payload(payload, tmp_path)
+
+    assert len(payload["prices"]["rows"]) == 13_200
+    assert path.stat().st_size < ed.MAX_OUTPUT_BYTES
+    assert path.stat().st_size > 0.5 * 13_200 * 90 * 5  # sanity: the cells really are in the file
+
+
+def test_main_rejects_a_window_above_90_days(tmp_path):
+    with pytest.raises(SystemExit):
+        ed.main(["--out", str(tmp_path), "--window-days", "91"])

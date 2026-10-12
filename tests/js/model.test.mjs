@@ -178,3 +178,48 @@ test("compare mode follows the selected fuel's unit and keeps the reader's visib
   selectFuel(data, single, 1);
   assert.deepEqual([single.get().fuel, single.get().compare], [1, []]);
 });
+
+// ---------- Phase 1: up to 90 days of per-station history ----------
+
+function payloadWithDays(n) {
+  const dates = buildDates("2026-07-14", n);
+  const rising = (v) => Array.from({ length: n }, (_, i) => v + i);
+  return {
+    ...payload,
+    dates,
+    // each series rises by 1 milli-euro per day, so the change over 7 days is exactly +7
+    prices: { fields: payload.prices.fields, rows: payload.prices.rows.map((r) => [r[0], r[1], rising(r[2][0]), r[3]]) },
+    coverage: { first_date: dates[0], latest_date: dates[n - 1], n_days: n },
+  };
+}
+
+test("period options follow the days available: 14 and 30 wait for data, All shows every day up to 90", () => {
+  const few = createData(loadModel(payloadWithDays(12))).rangeOptions();
+  assert.deepEqual(few.map((o) => [o.value, o.disabled]), [["7", false], ["14", true], ["30", true], ["all", false]]);
+  assert.equal(few.at(-1).label, "All (12 days)");
+
+  const full = createData(loadModel(payloadWithDays(90))).rangeOptions();
+  assert.ok(full.every((o) => !o.disabled));
+  assert.equal(full.at(-1).label, "All (90 days)");
+});
+
+test("with 90 days the trend and the station history cover every day and the 7-day change is exact", () => {
+  const long = createData(loadModel(payloadWithDays(90)));
+  const trend = long.trend({ ...DEFAULT_STATE, fuel: 5 }, [5]);
+  assert.equal(trend.dates.length, 90);
+  assert.equal(trend.series[0].points.length, 90);
+
+  const last30 = long.trend({ ...DEFAULT_STATE, fuel: 5, range: "30" }, [5]);
+  assert.equal(last30.dates.length, 30);
+  assert.equal(last30.dates.at(-1), "2026-10-11");
+
+  const k = long.kpi({ ...DEFAULT_STATE, fuel: 5 }, 5);
+  assert.equal(k.current.n, 4);
+  assert.equal(k.refIso, "2026-10-04");
+  assert.equal(k.delta, 7);
+  assert.equal(k.comparable, true);
+
+  const detail = long.stationDetail({ ...DEFAULT_STATE, fuel: 5 }, 101);
+  assert.equal(detail.history.length, 90);
+  assert.equal(detail.history[89] - detail.history[0], 89);
+});
