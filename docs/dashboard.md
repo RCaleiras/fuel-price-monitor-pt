@@ -6,7 +6,7 @@ to BigQuery. Cost: €0 (see "Cost").
 ## Data flow
 ```
 collect-fuel-prices (GitHub Actions, daily 06:01 UTC + manual)
-  job collect: Run collector -> Build models -> Export dashboard -> Upload site (Pages artifact)
+  job collect: Run collector -> Build models -> Run SQL tests -> Export dashboard -> Upload site (Pages artifact)
   job deploy:  deploy-pages (only when the repo variable DASHBOARD_DEPLOY = true)
 ```
 - `src/export_dashboard.py` runs the five queries in `sql/dashboard/` (they read `rpt_station_price_daily` only),
@@ -20,7 +20,7 @@ collect-fuel-prices (GitHub Actions, daily 06:01 UTC + manual)
 |---|---|
 | `generated_at` | export time, UTC (`YYYY-MM-DDTHH:MM:SSZ`) |
 | `coverage` | first and latest collection day and number of days collected (whole history) |
-| `window_days`, `dates` | the days shown: up to 30, ending on the latest day |
+| `window_days`, `dates` | the days shown: up to 90, ending on the latest day (fewer while fewer days are collected) |
 | `fuels` | `id` (= `fuel_sk`), `name`, `unit` (`litro`, `kg`, `m3`), `fleet` |
 | `stations` | `fields` + `rows`: DGEG code, name, type, brand, district, municipality, locality, address, lat, lon |
 | `prices` | `rows` of `[station position, fuel id, [price per date], last DGEG update (UTC)]`. Prices are milli-euro integers (2.207 EUR -> 2207); `null` = not published that day |
@@ -72,6 +72,10 @@ formatting), `site/model.js` (derived data, state, URL), `site/story.js` (genera
 ## Verification (2026-10-11)
 - `python -m pytest --cov=src -q`: 69 passed; `src/export_dashboard.py` 95% covered.
 - `node --test "tests/js/*.test.mjs"`: 12 passed (`site/lib.js`).
+- Phase 1 (2026-10-12, 90-day window): `python -m pytest`: 77 passed; `node --test "tests/js/*.test.mjs"`: 31 passed. Details in `docs/history_phase1.md`.
+- Phase 1 close (2026-10-12): `python -m pytest`: 98 passed (90% coverage); `node --test "tests/js/*.test.mjs"`: 41 passed;
+  SQL tests: 30 of 30. Fuel and period changes are about 30x faster after the first load (measured, Node, synthetic
+  history); see `docs/history_phase1.md`, round 3.
 - Redesign (same day): `node --test "tests/js/*.test.mjs"`: 29 passed (`site/lib.js`, `site/model.js`, `site/story.js`).
   Rendered in a browser at 1440×900 and 375×812, light and dark: the same figures as below (Gasóleo simples 2.224,
   n 2,844, mean 2.208, range 1.939–2.399, change −0.035; Gasolina simples 95 Faro 2.1365 shown as €2.137, n 176;
@@ -122,7 +126,7 @@ Visitors never reach GCP: they only download static files from GitHub.
 - The workflow's deploy job has only `pages: write` and `id-token: write`; the collect job keeps `contents: read`.
 
 ## Limits
-- History is short (since 2026-10-01); the window grows to 30 days. Older weekly national data (2010+) is not shown.
+- History is short (since 2026-10-01); the window holds up to 90 days and fills as days are collected (see `docs/history_phase1.md`). Older weekly national data (2010+) is not shown.
 - The "published that day" rule may change after the 2026-10-17 re-check of stale prices.
 - Station name, brand and address are the current ones (no history). About 8% of stations have the brand "Genérico".
 - Mainland Portugal only. GitHub may start the daily run late or skip it; the page always shows the data date and
