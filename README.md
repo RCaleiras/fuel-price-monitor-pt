@@ -57,9 +57,10 @@ _To fill after the first weeks of data._
 3. `python -m src.load_history` (one-off), then `python -m src.collect` (daily).
 4. `python -m src.build_models` (daily, after the collector) rebuilds the staging table in `sql/staging/`, then creates
    and updates the dimensions, the fact and the report view in `sql/models/`.
-5. `python -m src.export_dashboard --out site/data` writes the dashboard data; `python -m http.server -d site` serves it.
+5. `python -m src.export_dashboard --out site/data` writes the dashboard data (up to 90 days per station); `python -m http.server -d site` serves it.
 6. Tests: `python -m pytest --cov=src -q` for the Python code; `node --test "tests/js/*.test.mjs"` for the dashboard
-   logic; each file in `sql/tests/` is a query that must return 0 rows.
+   logic; each file in `sql/tests/` is a query that must return 0 rows (`python -m src.run_sql_tests` runs them all, and the
+   workflow runs it before the export).
 
 ## How I'd deliver this to a client
 _Scope, timeline and deliverables for a fleet or retail price-monitoring engagement. To write at the end._

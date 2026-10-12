@@ -28,7 +28,7 @@ OUTPUT_FILE = "dashboard.json"
 SCHEMA_VERSION = 1
 SOURCE = "Direção-Geral de Energia e Geologia (DGEG), preços de combustíveis por posto, CC BY 4.0"
 
-DEFAULT_WINDOW_DAYS = 30  # also hardcoded in sql/tests/dashboard_*.sql (INTERVAL 29 DAY)
+DEFAULT_WINDOW_DAYS = 90  # also hardcoded in sql/tests/dashboard_*.sql (INTERVAL 89 DAY)
 MAX_WINDOW_DAYS = 90
 MAX_BYTES_BILLED = 1_000_000_000  # 1 GB per query; each run bills ~50 MB per query today
 JOB_TIMEOUT_MS = 120_000
@@ -104,11 +104,17 @@ def build_payload(results: dict[str, list[dict]], window_days: int, generated_at
 
     fuel_ids = {f["id"] for f in fuels}
     price_rows = []
+    seen_pairs: set[tuple[int, int]] = set()
     for pair in results["03_station_prices"]:
         if pair["station_code"] not in station_index:
             raise ValueError(f"price for unknown station {pair['station_code']}")
         if pair["fuel_sk"] not in fuel_ids:
             raise ValueError(f"price for unknown fuel {pair['fuel_sk']}")
+        # the site indexes prices by station x fuel: a repeated pair would silently overwrite its series
+        key = (pair["station_code"], pair["fuel_sk"])
+        if key in seen_pairs:
+            raise ValueError(f"duplicate station x fuel pair {key} in the prices query")
+        seen_pairs.add(key)
         aligned: list[int | None] = [None] * len(dates)
         for point in pair["prices"]:
             if point["price_date"] not in date_index:
