@@ -89,10 +89,12 @@ billed < 1 GB per query.
 - Collection gaps cannot be repaired afterwards (the source has no history).
 - Station attributes are the current ones, not historical.
 - The "published that day" rule may change after the 2026-10-17 stale-price re-check.
-- The SQL test step is untested inside GitHub Actions (cannot run without a push); it was run locally against the
-  real dataset with the same code. A false failure would stop the daily publication (the site keeps the previous day).
+- The SQL tests ran inside GitHub Actions only through the read-only `validate-sql` workflow (30 of 30 passed, see
+  "Round 4"). The step inside `collect.yml` itself has not run in a daily run yet; its first real run is the first
+  scheduled run after the merge. A false failure would stop the daily publication (the site keeps the previous day).
 - The 60-day partition default is a trap for future tables (see Retention).
-- Dashboard speed with many days: see "Round 2". Not a problem today (12 days), a real one before 90.
+- Dashboard speed with many days: see "Round 2" and "Round 4". Not a problem today (12 days). At 90 days a 4x
+  slower CPU still needs about 1 s per fuel or period change and about 1.9 s for the first interaction.
 
 ## Later phases (not started)
 2. National weekly series since 2004, shown separately. 3. Daily aggregates by district/municipality and fuel.
@@ -120,7 +122,8 @@ billed < 1 GB per query.
 - Measured locally on the real dataset: 30 tests, 30 passed, about 28 s wall time, about 540 MiB billed per run
   (about 16 GiB/month against 1 TiB free). Negative paths checked against the real client with synthetic queries:
   rows -> `fail`, missing table -> `error`, invalid SQL -> `error` (never a silent pass).
-- Not tested: execution inside GitHub Actions itself (needs a push, which was not authorised).
+- Not tested at the time: execution inside GitHub Actions itself (needs a push, which was not authorised). Done
+  later through a separate read-only workflow, see "Round 4".
 - Decision for the owner: because the step is before the export, a failing test freezes the site on the previous
   day until fixed. To only warn, move the step after the export and mark it `continue-on-error: true`.
 
@@ -175,9 +178,10 @@ file and never published), so only size and speed are meaningful, not the prices
 - `tests/test_run_sql_tests.py` also checks the workflow file: the step sits after "Build models" and before the
   export and the upload, has no `if:`, `continue-on-error`, `always()` or `failure()`, and `deploy` needs `collect`.
 - Quality failures were not turned into warnings. Failures remain blocking.
-- **Not validated: execution inside GitHub Actions.** The workflow runs only on a schedule or by hand, and a run writes
-  a collector snapshot to BigQuery and can deploy. Running it from the branch is not risk free, so it was not done.
-  Treat the workflow as validated by structure and by local execution of the same command, not by a real run.
+- **Not validated at the time: execution inside GitHub Actions.** The workflow runs only on a schedule or by hand, and
+  a run writes a collector snapshot to BigQuery and can deploy. Running it from the branch is not risk free, so it was
+  not done. The same command was later run in a read-only workflow (see "Round 4"); the step inside `collect.yml`
+  itself is still validated only by structure.
 
 ### Browser: the cost and the minimal fix
 - Cost path (`site/model.js`): `trend()` computed one summary (a sort) for every day and then cut to the period, so
@@ -208,10 +212,9 @@ asks of the data layer (seven price cards and sparklines, summary, trend, compar
 
 - Two rounds each, same machine, versions alternated. The machine was about 3x slower than in round 2 (the same
   "before" fuel switch measured 233 ms then), so read ratios, not absolute times, across rounds.
-- **Not measured, estimates only:** a browser under 4x CPU throttle (the browser tooling did not connect in this
-  session). Scaling the measured ratios, switching fuel or period at 90 days should fall from the 2.3-3.0 s of round 2
-  to roughly 0.1 s, and the first interaction from about 4 s to roughly 3 s. Real phones, gzip transfer, Safari and
-  Firefox are still unmeasured.
+- **Browser under 4x CPU throttle: not measured in this round.** An estimate was written here (about 0.1 s for a fuel
+  or period change). It was wrong: the real measurement is in "Round 4" (about 1.0-1.2 s). Real phones, gzip transfer,
+  Safari and Firefox are still unmeasured.
 - What remains: the first interaction still computes six daily series (one per price card), linear in days. If that
   is not enough, options that need authorisation: one pass for all fleet fuels, drawing the sparklines after the first
   paint, a selection-based median instead of a full sort, or daily summaries precomputed in the export (changes the
@@ -219,3 +222,57 @@ asks of the data layer (seven price cards and sparklines, summary, trend, compar
 
 ### Period selector
 Unchanged: `7 / 14 / 30 / All`. No 60 or 90 day option was added and no interface was changed.
+
+## Round 4: pre-merge validation of PR #18 (2026-10-12)
+
+### SQL tests inside GitHub Actions
+`collect.yml` cannot be run from a branch without side effects: the collector appends to `raw_station_prices`, the
+model build recreates the tables, and with `DASHBOARD_DEPLOY=true` the site is uploaded (the `github-pages`
+environment only accepts `main`, so the deploy job would be refused, but the data would already be written). The tests
+are not isolated from those steps. So the tests got their own workflow:
+
+| Item | Value |
+|---|---|
+| File | `.github/workflows/validate-sql.yml` |
+| Triggers | `pull_request` on `sql/**`, `src/run_sql_tests.py` and the file itself; `workflow_dispatch` (usable only once on `main`) |
+| What runs | checkout of the PR's own commit, `pip install`, `python -m src.run_sql_tests` |
+| What does not run | collector, model build, export, upload, deploy. Permissions: `contents: read` only |
+| Result | run 38309263097, commit `42192a4`: 30 tests, 30 passed, 0 not passed; every step `success` |
+
+What this proves: the runner works in the real Actions environment (ubuntu-24.04, Python 3.12, the real secret and
+variables) against the real dataset. What it does not prove: the negative paths inside Actions (they were checked
+locally and by unit tests), and the step inside `collect.yml`, which has the same command but has not had a daily run
+yet.
+
+### Permissions (read, not changed)
+- The service account has `roles/bigquery.dataEditor` and `roles/bigquery.jobUser` on the project. The tests need only
+  read access (`dataViewer` + `jobUser`).
+- The runner limits itself in software: a dry run refuses anything that is not a `SELECT`, and each query has a 200 MB
+  billing cap and a 120 s timeout. The key itself still has write permission in every workflow.
+- Option, not done (needs authorisation): a second read-only service account and secret used only by `validate-sql`.
+
+### Browser measurement under CPU throttle (measured)
+Method: Chrome 154.0.8037.98 headless on Windows 11 (Intel i5-1235U), viewport 1280x900, cache disabled, controlled
+over the DevTools protocol. Both versions (`origin/main` before the PR, the PR after) served locally and without gzip
+with the **same synthetic** 90-day file (real structure: 3,260 stations, 14,381 series, 7.5 MB; the 79 days before the
+first real day are a seeded random walk, marked `synthetic`, never published). 7 repetitions per version, versions
+alternated, one warm-up discarded, medians. An "interaction" is the time from the event to the second animation frame,
+an approximation of the real input-to-paint time, not the INP metric.
+
+| Measure (median, ms) | 1x before | 1x after | 4x before | 4x after |
+|---|---|---|---|---|
+| Initial load | 1,689 | 1,429 | 12,855 | 11,431 |
+| First interaction | 916 | 153 | 6,338 | 1,909 |
+| Change fuel | 709 | 110 | 4,950 | 1,192 |
+| Change period | 668 | 81 | 4,765 | 1,041 |
+| Change district | 80 | 75 | 984 | 931 |
+
+- The fix works in a real browser: fuel and period changes are about 4-8x faster, the first interaction about 3-6x.
+  District was already cheap and barely changes.
+- The estimate written in Round 3 (about 0.1 s at 4x) was wrong. At 4x CPU, fuel and period changes still take about
+  1.0-1.2 s and the first interaction about 1.9 s, so the 1 s threshold is not met at 90 days.
+- Initial load at 4x is 11-13 s and the two versions are within the run-to-run spread; it is dominated by parsing and
+  drawing 7.5 MB, not by the part that was changed.
+- Not measured: real gzip transfer, real phones, Safari and Firefox, the real INP metric, and real data for 90 days
+  (it exists from about 2026-12-29). Machine noise was visible (1x load before: 936-1,761 ms).
+- Not done on purpose: no further optimisation. Options are listed in Round 3 and need authorisation.
