@@ -28,7 +28,7 @@ OUTPUT_FILE = "dashboard.json"
 SCHEMA_VERSION = 1
 SOURCE = "Direção-Geral de Energia e Geologia (DGEG), preços de combustíveis por posto, CC BY 4.0"
 
-DEFAULT_WINDOW_DAYS = 90  # also hardcoded in sql/tests/dashboard_*.sql (INTERVAL 89 DAY)
+DEFAULT_WINDOW_DAYS = 90  # also the default window of sql/tests/dashboard_*.sql (@window_days, via src.run_sql_tests)
 MAX_WINDOW_DAYS = 90
 MAX_BYTES_BILLED = 1_000_000_000  # 1 GB per query; each run bills ~50 MB per query today
 JOB_TIMEOUT_MS = 120_000

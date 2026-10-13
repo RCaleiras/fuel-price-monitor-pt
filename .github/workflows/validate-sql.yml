@@ -10,6 +10,9 @@ on:
     paths:
       - "sql/**"
       - "src/run_sql_tests.py"
+      - "src/export_dashboard.py"  # DEFAULT_WINDOW_DAYS, the window the dashboard tests check
+      - "src/collect.py"  # build_client
+      - "requirements.txt"
       - ".github/workflows/validate-sql.yml"
 
 permissions:
@@ -21,6 +24,9 @@ concurrency:
 
 jobs:
   validate:
+    # The job uses the BigQuery key, so it runs only for this repository's own branches (a fork PR gets no secrets
+    # anyway and would just fail) and by hand.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

@@ -53,9 +53,12 @@ export const DEFAULT_STATE = Object.freeze({
 const RESETS_PAGE = ["fuel", "district", "municipality", "brand", "type", "range", "day", "search"];
 export const RESET_PATCH = Object.freeze({ district: "", municipality: "", brand: "", type: "", range: "all", day: null, search: "", station: null });
 
-/** A tiny store: immutable snapshots, one subscriber list. Changing the district clears the municipality. */
-export function createStore(initial) {
-  let state = Object.freeze({ ...initial });
+/**
+ * A tiny store: immutable snapshots, one subscriber list. Changing the district clears the municipality.
+ * `normalize(state)` (optional) returns the state to keep, e.g. data.fitDay, so every snapshot is consistent.
+ */
+export function createStore(initial, normalize = (s) => s) {
+  let state = Object.freeze(normalize({ ...initial }));
   const subscribers = new Set();
   return {
     get: () => state,
@@ -63,7 +66,7 @@ export function createStore(initial) {
       const next = { ...state, ...patch };
       if ("district" in patch && !("municipality" in patch)) next.municipality = "";
       if (RESETS_PAGE.some((k) => k in patch) && !("page" in patch)) next.page = 0;
-      state = Object.freeze(next);
+      state = Object.freeze(normalize(next));
       for (const fn of subscribers) fn(state, patch);
     },
     subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); },
@@ -156,6 +159,9 @@ export function createData(model) {
   }
 
   const windowStart = (state) => (state.range === "all" ? 0 : Math.max(0, dates.length - Number(state.range)));
+
+  /** The inspected day must lie inside the chart period: a day before the period start goes back to the latest day. */
+  const fitDay = (state) => (state.day !== null && state.day < windowStart(state) ? { ...state, day: null } : state);
 
   function rangeOptions() {
     const n = dates.length;
@@ -256,7 +262,7 @@ export function createData(model) {
   return {
     model, fuels, fleet, fuelById, defaultFuel, brands, types, districts, latest, dates,
     coverage: model.coverage, generatedAt: model.generated_at,
-    dayIndex, isLatest, pairs, kpi, trend, rangeOptions, windowStart, groups, groupKey, groupContext, scopeSummary,
+    dayIndex, isLatest, pairs, kpi, trend, rangeOptions, windowStart, fitDay, groups, groupKey, groupContext, scopeSummary,
     stationRows, mapPoints, stationDetail, weekMovers, activity, municipalities,
   };
 }

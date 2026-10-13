@@ -221,3 +221,93 @@ def test_the_real_tests_directory_is_found_and_not_empty():
 
     assert len(names) >= 30
     assert "dashboard_station_prices_match_fact.sql" in names
+
+
+def window_values(client):
+    """The window_days parameter of every query sent (dry runs included), None where the query had none."""
+    values = []
+    for call in client.query.call_args_list:
+        params = call.kwargs["job_config"].query_parameters
+        values.append(params[0].value if params else None)
+    return values
+
+
+def test_a_test_that_uses_the_window_gets_the_export_default_in_the_dry_run_and_the_real_run(tmp_path):
+    sql = "SELECT 1 WHERE @window_days < 0"
+    write_tests(tmp_path, windowed=sql)
+    client = client_returning({sql: []})
+
+    rst.run_all(client, tmp_path)
+
+    assert window_values(client) == [rst.DEFAULT_WINDOW_DAYS, rst.DEFAULT_WINDOW_DAYS]
+
+
+def test_the_window_can_be_overridden_so_the_test_follows_a_non_default_export(tmp_path):
+    sql = "SELECT 1 WHERE @window_days < 0"
+    write_tests(tmp_path, windowed=sql)
+    client = client_returning({sql: []})
+
+    rst.run_all(client, tmp_path, window_days=30)
+
+    assert window_values(client) == [30, 30]
+
+
+def test_a_test_without_the_window_is_sent_no_parameter(tmp_path):
+    write_tests(tmp_path, plain="SELECT 1")
+    client = client_returning({"SELECT 1": []})
+
+    rst.run_all(client, tmp_path)
+
+    assert window_values(client) == [None, None]
+
+
+def test_the_export_default_window_is_the_one_the_dashboard_tests_use():
+    from src import export_dashboard
+
+    assert rst.DEFAULT_WINDOW_DAYS == export_dashboard.DEFAULT_WINDOW_DAYS
+    for name in ("dashboard_station_prices_match_fact.sql", "dashboard_stations_unique.sql"):
+        sql = (rst.TESTS_DIR / name).read_text(encoding="utf-8")
+        assert "@window_days" in sql
+        assert "INTERVAL 89 DAY" not in sql  # no second copy of the window length
+
+
+def test_a_test_that_outlives_the_budget_is_an_error_and_the_fast_ones_still_report(tmp_path):
+    import threading
+
+    write_tests(tmp_path, fast="SELECT 1", slow="SELECT 2")
+    release = threading.Event()
+    client = client_returning({"SELECT 1": [], "SELECT 2": []})
+    original = client.query.side_effect
+
+    def query(sql, job_config=None):
+        if sql == "SELECT 2":
+            release.wait(timeout=5)  # stands in for a BigQuery job that does not come back
+        return original(sql, job_config=job_config)
+
+    client.query.side_effect = query
+    try:
+        results = rst.run_all(client, tmp_path, budget_s=0.2)
+    finally:
+        release.set()
+
+    assert [(r.name, r.status) for r in results] == [("fast", "pass"), ("slow", "error")]
+    assert "budget" in results[1].detail
+
+
+def test_results_keep_name_order_when_the_tests_run_in_parallel(tmp_path):
+    names = [f"t{i:02d}" for i in range(20)]
+    write_tests(tmp_path, **{n: f"SELECT '{n}'" for n in names})
+    client = client_returning({f"SELECT '{n}'": [] for n in names})
+
+    results = rst.run_all(client, tmp_path)
+
+    assert [r.name for r in results] == names
+
+
+def test_the_sql_test_step_has_a_time_limit_above_the_runner_budget():
+    import re
+
+    step = workflow_step(WORKFLOW.read_text(encoding="utf-8"), "Run SQL tests")
+    minutes = int(re.search(r"timeout-minutes:\s*(\d+)", step).group(1))
+
+    assert minutes * 60 > rst.TOTAL_BUDGET_S
