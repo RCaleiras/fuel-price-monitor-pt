@@ -6,10 +6,14 @@ Locally: `python -m src.run_sql_tests` (needs GCP_PROJECT and BQ_DATASET, like t
 
 Every test is a read-only SELECT, so no new permission is needed. Each query has a bytes cap and a timeout; all tests
 run even if one fails, so a single run shows every problem. Cost today: ~540 MiB billed per full run (30 tests).
+Tests run in parallel and the whole run has a time budget, so a slow BigQuery cannot stack 30 timeouts one after the
+other; a test not finished in time is reported as an error. Tests that mention @window_days get the same window the
+dashboard export uses (DEFAULT_WINDOW_DAYS), so there is one number to change.
 """
 
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,10 +22,14 @@ from dotenv import load_dotenv
 from google.cloud import bigquery
 
 from src.collect import build_client
+from src.export_dashboard import DEFAULT_WINDOW_DAYS
 
 TESTS_DIR = Path(__file__).resolve().parent.parent / "sql" / "tests"
 MAX_BYTES_BILLED = 200_000_000  # ~4x the heaviest test today (50 MiB: 5 tables x 10 MiB minimum)
 JOB_TIMEOUT_MS = 120_000
+MAX_WORKERS = 8  # tests in flight at once; each is a small read, so this is far below any BigQuery limit
+TOTAL_BUDGET_S = 300  # whole run; the CI step allows a little more, so the runner reports before CI kills it
+WINDOW_PARAMETER = "window_days"
 MAX_ROWS_SHOWN = 5  # evidence kept for a failing test
 EXPECTED_STATEMENT_TYPE = "SELECT"  # a test only reads; anything else (DML, DDL, script) is refused unrun
 EXIT_NOT_RUN = 2
@@ -51,16 +59,27 @@ def _error(path: Path, detail: str) -> TestResult:
     return TestResult(path.stem, "error", 0, detail)
 
 
-def run_one(client: bigquery.Client, path: Path) -> TestResult:
+def _parameters(sql: str, window_days: int) -> list[bigquery.ScalarQueryParameter]:
+    """The window parameter, only for a test that uses it (BigQuery refuses a parameter the query does not name)."""
+    if f"@{WINDOW_PARAMETER}" not in sql:
+        return []
+    return [bigquery.ScalarQueryParameter(WINDOW_PARAMETER, "INT64", window_days)]
+
+
+def run_one(client: bigquery.Client, path: Path, window_days: int = DEFAULT_WINDOW_DAYS) -> TestResult:
     """Run one test; anything but a SELECT that returns its complete row set is an error, never a pass."""
     sql = path.read_text(encoding="utf-8")
     if not sql.strip():
         return _error(path, "empty test file")
-    config = bigquery.QueryJobConfig(maximum_bytes_billed=MAX_BYTES_BILLED, job_timeout_ms=JOB_TIMEOUT_MS)
+    parameters = _parameters(sql, window_days)
+    config = bigquery.QueryJobConfig(
+        query_parameters=parameters, maximum_bytes_billed=MAX_BYTES_BILLED, job_timeout_ms=JOB_TIMEOUT_MS
+    )
     try:
         # A dry run executes nothing and reports what the statement is, so a DELETE or CREATE that landed in
         # sql/tests/ is refused before it can run (it would return no rows, which would otherwise read as a pass).
-        statement_type = client.query(sql, job_config=bigquery.QueryJobConfig(dry_run=True)).statement_type
+        dry_config = bigquery.QueryJobConfig(dry_run=True, query_parameters=parameters)
+        statement_type = client.query(sql, job_config=dry_config).statement_type
         if statement_type != EXPECTED_STATEMENT_TYPE:
             return _error(path, f"unexpected statement type {statement_type!r}, expected {EXPECTED_STATEMENT_TYPE!r}; not run")
         result = client.query(sql, job_config=config).result()
@@ -74,8 +93,27 @@ def run_one(client: bigquery.Client, path: Path) -> TestResult:
     return TestResult(path.stem, "fail", len(rows), rows[:MAX_ROWS_SHOWN])
 
 
-def run_all(client: bigquery.Client, directory: Path = TESTS_DIR) -> list[TestResult]:
-    return [run_one(client, path) for path in test_files(directory)]
+def run_all(
+    client: bigquery.Client,
+    directory: Path = TESTS_DIR,
+    window_days: int = DEFAULT_WINDOW_DAYS,
+    budget_s: float = TOTAL_BUDGET_S,
+) -> list[TestResult]:
+    """Run every test in parallel; results come back in name order, and a test that outlives the budget is an error."""
+    files = test_files(directory)
+    pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+    futures = [pool.submit(run_one, client, path, window_days) for path in files]
+    done, _ = wait(futures, timeout=budget_s)
+    pool.shutdown(wait=False, cancel_futures=True)  # a stuck query is bounded by JOB_TIMEOUT_MS; do not wait for it
+    results = []
+    for path, future in zip(files, futures):
+        if future not in done:
+            results.append(_error(path, f"not finished within the {budget_s:g}s budget"))
+        elif future.exception() is not None:
+            results.append(_error(path, f"{type(future.exception()).__name__}: {future.exception()}"))
+        else:
+            results.append(future.result())
+    return results
 
 
 def main() -> int:

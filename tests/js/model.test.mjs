@@ -223,3 +223,35 @@ test("with 90 days the trend and the station history cover every day and the 7-d
   assert.equal(detail.history.length, 90);
   assert.equal(detail.history[89] - detail.history[0], 89);
 });
+
+test("fitDay: a period that no longer contains the inspected day sends the page back to the latest day", () => {
+  const data = createData(loadModel(payload));
+  const store = createStore({ ...base, range: "all", day: 1 }, data.fitDay);
+  assert.equal(store.get().day, 1);
+
+  store.set({ range: "7" }); // 8 days collected: the 7-day period starts at index 1
+  assert.equal(store.get().day, 1, "the first day of the period is still inside it");
+
+  store.set({ range: "all", day: 0 });
+  store.set({ range: "7" });
+  assert.equal(store.get().day, null, "day 0 is before the 7-day period");
+  assert.equal(data.isLatest(store.get()), true);
+});
+
+test("fitDay: a shared link whose day is outside its period opens on the latest day", () => {
+  const data = createData(loadModel(payload));
+  const state = stateFromParams(new URLSearchParams(`days=7&day=${payload.dates[0]}`), data);
+  const store = createStore(state, data.fitDay);
+
+  assert.equal(store.get().day, null);
+  assert.equal(store.get().range, "7");
+});
+
+test("fitDay: a day inside the period, or no day, is left alone", () => {
+  const data = createData(loadModel(payload));
+  const inside = { ...base, range: "7", day: 3 };
+  const latest = { ...base, range: "7", day: null };
+
+  assert.equal(data.fitDay(inside), inside);
+  assert.equal(data.fitDay(latest), latest);
+});

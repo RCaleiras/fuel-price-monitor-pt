@@ -182,7 +182,7 @@ async function load() {
 async function start() {
   try {
     data = await load();
-    store = createStore(stateFromParams(new URLSearchParams(location.search), data));
+    store = createStore(stateFromParams(new URLSearchParams(location.search), data), data.fitDay);
     renderFreshness();
     bindFilters(document, data, store);
     bindSearch($("search"), store);

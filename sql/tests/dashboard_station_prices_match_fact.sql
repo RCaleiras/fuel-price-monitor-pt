@@ -1,7 +1,8 @@
 -- The dashboard export (sql/dashboard/03_station_prices.sql, default 90-day window) must hold exactly the published,
 -- non-suspect prices of the fact table: rebuilt here from the fact and dim_stations, not from the report view.
 -- Returns one row per difference; must return 0 rows.
--- The 90-day window (INTERVAL 89 DAY) mirrors DEFAULT_WINDOW_DAYS in src/export_dashboard.py: change both together.
+-- @window_days is passed by src/run_sql_tests.py (default DEFAULT_WINDOW_DAYS in src/export_dashboard.py), the same
+-- parameter the export queries in sql/dashboard/ use, so the test always checks the window that is exported.
 WITH bounds AS (
   SELECT MAX(price_date) AS latest_date
   FROM `fuel-monitor-pt.fuel_monitor.fct_station_price_daily`
@@ -16,7 +17,7 @@ fact AS (
     AND NOT f.is_suspect_price
     AND f.station_sk <> -1
     AND f.fuel_sk <> -1
-    AND f.price_date BETWEEN DATE_SUB(b.latest_date, INTERVAL 89 DAY) AND b.latest_date
+    AND f.price_date BETWEEN DATE_SUB(b.latest_date, INTERVAL @window_days - 1 DAY) AND b.latest_date
 ),
 
 export AS (
@@ -30,7 +31,7 @@ export AS (
     AND NOT r.is_suspect_price
     AND r.station_sk <> -1
     AND r.fuel_sk <> -1
-    AND r.price_date BETWEEN DATE_SUB(b.latest_date, INTERVAL 89 DAY) AND b.latest_date
+    AND r.price_date BETWEEN DATE_SUB(b.latest_date, INTERVAL @window_days - 1 DAY) AND b.latest_date
   GROUP BY r.station_code, r.fuel_sk
 ),
 

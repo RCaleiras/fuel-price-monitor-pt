@@ -37,6 +37,7 @@ jobs:
       # Runs every query in sql/tests/ (read-only, ~540 MiB billed, each capped); any row or error fails the job here,
       # before the export, so a snapshot that breaks a data rule is not published and the site keeps the previous day.
       - name: Run SQL tests
+        timeout-minutes: 8  # the runner stops itself at 5 minutes and names the tests it did not finish
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           GCP_PROJECT: ${{ vars.GCP_PROJECT }}
